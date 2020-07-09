@@ -90,6 +90,12 @@ public class InstanceController {
     };
 
 
+    /**
+     * 注册服务实例接口
+     * @param request
+     * @return
+     * @throws Exception
+     */
     @CanDistro
     @PostMapping
     @Secured(parser = NamingResourceParser.class, action = ActionTypes.WRITE)
@@ -97,7 +103,7 @@ public class InstanceController {
 
         String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
         String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID, Constants.DEFAULT_NAMESPACE_ID);
-
+        // 注册服务
         serviceManager.registerInstance(namespaceId, serviceName, parseInstance(request));
         return "ok";
     }
@@ -255,13 +261,19 @@ public class InstanceController {
         throw new NacosException(NacosException.NOT_FOUND, "no matched ip found!");
     }
 
+    /**
+     * 心跳接口
+     * @param request
+     * @return
+     * @throws Exception
+     */
     @CanDistro
     @PutMapping("/beat")
     @Secured(parser = NamingResourceParser.class, action = ActionTypes.WRITE)
     public JSONObject beat(HttpServletRequest request) throws Exception {
 
         JSONObject result = new JSONObject();
-
+        // 从json响应中取出clientBeatInterval字段值更新BeatReactor的clientBeatInterval属性值
         result.put("clientBeatInterval", switchDomain.getClientBeatInterval());
         String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
         String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID,
@@ -272,6 +284,7 @@ public class InstanceController {
         int port = Integer.parseInt(WebUtils.optional(request, "port", "0"));
         String beat = WebUtils.optional(request, "beat", StringUtils.EMPTY);
 
+        // 组装 metrics 信息
         RsInfo clientBeat = null;
         if (StringUtils.isNotBlank(beat)) {
             clientBeat = JSON.parseObject(beat, RsInfo.class);
@@ -291,7 +304,7 @@ public class InstanceController {
         if (Loggers.SRV_LOG.isDebugEnabled()) {
             Loggers.SRV_LOG.debug("[CLIENT-BEAT] full arguments: beat: {}, serviceName: {}", clientBeat, serviceName);
         }
-
+        // 获得对应 具体 instance信息
         Instance instance = serviceManager.getInstance(namespaceId, serviceName, clusterName, ip, port);
 
         if (instance == null) {
@@ -311,7 +324,7 @@ public class InstanceController {
 
             serviceManager.registerInstance(namespaceId, serviceName, instance);
         }
-
+        // 获取service
         Service service = serviceManager.getService(namespaceId, serviceName);
 
         if (service == null) {
@@ -324,6 +337,7 @@ public class InstanceController {
             clientBeat.setPort(port);
             clientBeat.setCluster(clusterName);
         }
+        // 处理心跳
         service.processClientBeat(clientBeat);
 
         result.put(CommonParams.CODE, NamingResponseCode.OK);

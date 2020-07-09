@@ -48,6 +48,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Nacos Naming Service
  *
+ * minging 服务
+ *
  * @author nkorange
  */
 @SuppressWarnings("PMD.ServiceOrDaoClassShouldEndWithImplRule")
@@ -74,8 +76,13 @@ public class NacosNamingService implements NamingService {
 
     private NamingProxy serverProxy;
 
+    /**
+     * 初始化
+     * @param serverList
+     */
     public NacosNamingService(String serverList) {
         Properties properties = new Properties();
+        // 初始化nacos 服务地址
         properties.setProperty(PropertyKeyConst.SERVER_ADDR, serverList);
 
         init(properties);
@@ -85,16 +92,48 @@ public class NacosNamingService implements NamingService {
         init(properties);
     }
 
+    /**
+     * 初始化数据
+     * @param properties
+     */
     private void init(Properties properties) {
+        // 获取服务
         namespace = InitUtils.initNamespaceForNaming(properties);
+        // 初始化服务地址，没有配置 endpoint，使用传入的 ip和端口；
+        // 如果有配置 endpoint，则将 serverList 置为空字符串
+        // 域名解析规则：在endpoint端配置网段和环境的映射关系，
+        // endpoint在接收到客户端的请求之后，根据客户端的来源IP所属网段，计算出该客户端所属环境，
+        // 然后找到对应环境的IP列表返回给客户端，如上图二
+        // 可以使用 nginx 的geo 模块实现简单的地址服务器
         initServerAddr(properties);
         InitUtils.initWebRootContext();
+        // 初始化缓存文件夹 默认为 {user.home} + "/nacos/naming/" + namespace;
         initCacheDir();
+        // 初始化log文件
         initLogName(properties);
-
+        // 通过 Notifier 事件监听 监听服务变更
         eventDispatcher = new EventDispatcher();
+        //  初始化服务代理 主要做服务地址刷新，和安全校验
         serverProxy = new NamingProxy(namespace, endpoint, serverList, properties);
+        // 设置心跳任务线程
+        // initClientBeatThreadCount(properties) 初始化客户端心跳检测线程数量，默认值为
+        // Runtime.getRuntime().availableProcessors() > 1 ? Runtime.getRuntime().availableProcessors() / 2 : 1;
+        // Runtime.getRuntime().availableProcessors() 返回的处理器数量不一定准确
+        // 参考： https://blog.csdn.net/zhanghongzheng3213/article/details/83376571
+        // 新建 BeatReactor 对象，使用 ScheduledThreadPoolExecutor 创建守护线程，定时运行 BeatProcessor
         beatReactor = new BeatReactor(serverProxy, initClientBeatThreadCount(properties));
+        //这里包含3部分 这里 initPollingThreadCount 线程去当前系统可用线程数
+        // 1 UpdateTask 定时更新已存在的服务
+        // 2 FailoverReactor  容灾备份
+        // 3 PushReceiver 接受服务器的udp保文，作出响应
+
+        // initPollingThreadCount(properties) 和上面初始化客户端心跳检测线程数量一样
+        // isLoadCacheAtStart(properties) 启动时是否加载缓存的服务信息，默认值 false
+        // 新建 HostReactor 对象，HostReactor 创建 ScheduledThreadPoolExecutor 线程池、FailoverReactor 对象和 PushReceiver 对象
+        // 其中 FailoverReactor 负责故障转移功能， FailoverReactor init() 代码
+        // PushReceiver 使用 DatagramSocket(UDP)，接收消息，如果是 dom 类型，处理接收的数据，
+        // 如果服务有变动，添加 serviceInfo 到 EventDispatcher 的 changedServices 里面
+        // 更新本地缓存文件，更新 MetricsMonitor 中服务数量，返回 ack 信息
         hostReactor = new HostReactor(eventDispatcher, serverProxy, cacheDir, isLoadCacheAtStart(properties),
             initPollingThreadCount(properties));
     }
@@ -154,7 +193,20 @@ public class NacosNamingService implements NamingService {
             cacheDir = System.getProperty("user.home") + "/nacos/naming/" + namespace;
         }
     }
+    /***
+     * 注册流程
+     * NacosServiceRegistry.register()–>namingService.registerInstance()
+     * –>serverProxy(NamingProxy).registerService()–>NamingProxy.reqAPI()
+     * –>NamingProxy.callServer()–>HttpClient.request();
+     */
 
+    /**
+     * 注册发布服务   cluster默认
+     * @param serviceName name of service
+     * @param ip          instance ip
+     * @param port        instance port
+     * @throws NacosException
+     */
     @Override
     public void registerInstance(String serviceName, String ip, int port) throws NacosException {
         registerInstance(serviceName, ip, port, Constants.DEFAULT_CLUSTER_NAME);
@@ -165,17 +217,35 @@ public class NacosNamingService implements NamingService {
         registerInstance(serviceName, groupName, ip, port, Constants.DEFAULT_CLUSTER_NAME);
     }
 
+    /**
+     * 组默认
+     * @param serviceName name of service
+     * @param ip          instance ip
+     * @param port        instance port
+     * @param clusterName instance cluster name
+     * @throws NacosException
+     */
     @Override
     public void registerInstance(String serviceName, String ip, int port, String clusterName) throws NacosException {
         registerInstance(serviceName, Constants.DEFAULT_GROUP, ip, port, clusterName);
     }
 
+    /**
+     *
+     * @param serviceName name of service
+     * @param groupName   group of service
+     * @param ip          instance ip
+     * @param port        instance port
+     * @param clusterName instance cluster name
+     * @throws NacosException
+     */
     @Override
     public void registerInstance(String serviceName, String groupName, String ip, int port, String clusterName) throws NacosException {
-
+        // 构建实例信息
         Instance instance = new Instance();
         instance.setIp(ip);
         instance.setPort(port);
+        // 设置权重
         instance.setWeight(1.0);
         instance.setClusterName(clusterName);
 
@@ -187,9 +257,16 @@ public class NacosNamingService implements NamingService {
         registerInstance(serviceName, Constants.DEFAULT_GROUP, instance);
     }
 
+    /**
+     * 这里构建心跳，同步通过代理发布服务
+     * @param serviceName name of service
+     * @param groupName   group of service
+     * @param instance    instance to register
+     * @throws NacosException
+     */
     @Override
     public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
-
+        // 增加心跳，对于临时实例，默认就是临时实例
         if (instance.isEphemeral()) {
             BeatInfo beatInfo = new BeatInfo();
             beatInfo.setServiceName(NamingUtils.getGroupedName(serviceName, groupName));
@@ -199,11 +276,12 @@ public class NacosNamingService implements NamingService {
             beatInfo.setWeight(instance.getWeight());
             beatInfo.setMetadata(instance.getMetadata());
             beatInfo.setScheduled(false);
+            // 设置心跳周期，默认为5秒
             beatInfo.setPeriod(instance.getInstanceHeartBeatInterval());
 
             beatReactor.addBeatInfo(NamingUtils.getGroupedName(serviceName, groupName), beatInfo);
         }
-
+        // 服务注册
         serverProxy.registerService(NamingUtils.getGroupedName(serviceName, groupName), groupName, instance);
     }
 
@@ -340,6 +418,7 @@ public class NacosNamingService implements NamingService {
     public List<Instance> selectInstances(String serviceName, String groupName, List<String> clusters, boolean healthy, boolean subscribe) throws NacosException {
 
         ServiceInfo serviceInfo;
+        // 标记是订阅的
         if (subscribe) {
             serviceInfo = hostReactor.getServiceInfo(NamingUtils.getGroupedName(serviceName, groupName), StringUtils.join(clusters, ","));
         } else {

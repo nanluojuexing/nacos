@@ -120,6 +120,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             return;
         }
         // size = 1 means only myself in the list, we need at least one another server alive:
+        // 服务实例等于1的时候
         while (serverListManager.getHealthyServers().size() <= 1) {
             Thread.sleep(1000L);
             Loggers.DISTRO.info("waiting server list init...");
@@ -140,9 +141,16 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
         }
     }
 
+    /**
+     * 将服务实现添加注册列表
+     * @param key   key of data, this key should be globally unique
+     * @param value value of data
+     * @throws NacosException
+     */
     @Override
     public void put(String key, Record value) throws NacosException {
         onPut(key, value);
+        // 同步实例信息到集群其他节点
         taskDispatcher.addTask(key);
     }
 
@@ -170,7 +178,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
         if (!listeners.containsKey(key)) {
             return;
         }
-
+        // 发布变更事件, 添加注册实例数据
         notifier.addTask(key, ApplyAction.CHANGE);
     }
 
@@ -373,7 +381,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
         @Override
         public void run() {
             Loggers.DISTRO.info("distro notifier started");
-
+            // 循环从阻塞队列里面获取数据
             while (true) {
                 try {
 

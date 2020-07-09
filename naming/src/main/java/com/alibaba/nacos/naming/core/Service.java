@@ -171,7 +171,7 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
                 instance.setWeight(0.01D);
             }
         }
-
+        // 将注册实例信息更新到注册表的结构内存中去
         updateIPs(value.getInstanceList(), KeyBuilder.matchEphemeralInstanceListKey(key));
 
         recalculateChecksum();
@@ -233,14 +233,16 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
                 Loggers.SRV_LOG.error("[NACOS-DOM] failed to process ip: " + instance, e);
             }
         }
-
+        // 更新集群的节点信息
         for (Map.Entry<String, List<Instance>> entry : ipMap.entrySet()) {
             //make every ip mine
             List<Instance> entryIPs = entry.getValue();
+            // 将临时注册的实例，更新到cluster上   ephemeralInstances 属性，服务发现实例最终查找临时实例，就是通过这个属性获取
             clusterMap.get(entry.getKey()).updateIPs(entryIPs, ephemeral);
         }
-
+        // 设置最后的更新时间
         setLastModifiedMillis(System.currentTimeMillis());
+        // 发布服务变更事件
         getPushService().serviceChanged(this);
         StringBuilder stringBuilder = new StringBuilder();
 
@@ -255,6 +257,8 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
 
     public void init() {
 
+        // 5 秒运行一次,只处理本机负责的 Server，防止重复进行健康检查
+        // 获取所有 instance，如果健康状态变更，通过 PushService 推送变更，
         HealthCheckReactor.scheduleCheck(clientBeatCheckTask);
 
         for (Map.Entry<String, Cluster> entry : clusterMap.entrySet()) {

@@ -98,12 +98,15 @@ public class NamingProxy {
                 this.nacosDomain = serverList;
             }
         }
-
+        // 初始化刷新任务
         initRefreshTask();
     }
 
+    /**
+     * 这里主要不同的刷新任务
+     */
     private void initRefreshTask() {
-
+        // 这里初始化两个定时任务的线程，分别执行下面的两个任务
         ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(2, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -113,7 +116,7 @@ public class NamingProxy {
                 return t;
             }
         });
-
+        // 定时刷新服务地址，每隔30秒
         executorService.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -121,7 +124,7 @@ public class NamingProxy {
             }
         }, 0, vipSrvRefInterMillis, TimeUnit.MILLISECONDS);
 
-
+        // 安全token 校验,每5秒执行
         executorService.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -129,10 +132,15 @@ public class NamingProxy {
             }
         }, 0, securityInfoRefreshIntervalMills, TimeUnit.MILLISECONDS);
 
+        //创建任务不是立即执行，所以在初始化的时候，直接执行两个方法
         refreshSrvIfNeed();
         securityProxy.login(getServerList());
     }
 
+    /**
+     *
+     * @return
+     */
     public List<String> getServerListFromEndpoint() {
 
         try {
@@ -164,27 +172,28 @@ public class NamingProxy {
 
     private void refreshSrvIfNeed() {
         try {
-
+            // 有服务直接返回
             if (!CollectionUtils.isEmpty(serverList)) {
                 NAMING_LOGGER.debug("server list provided by user: " + serverList);
                 return;
             }
-
+            // 当前时间减去上次刷新时间 < 30 秒，不刷新
             if (System.currentTimeMillis() - lastSrvRefTime < vipSrvRefInterMillis) {
                 return;
             }
-
+            // 获取端点的服务列表
             List<String> list = getServerListFromEndpoint();
-
+            // 如果为空，抛出异常
             if (CollectionUtils.isEmpty(list)) {
                 throw new Exception("Can not acquire Nacos list");
             }
-
+            // 如果不相等，打印日志 新的endpoint
             if (!CollectionUtils.isEqualCollection(list, serversFromEndpoint)) {
                 NAMING_LOGGER.info("[SERVER-LIST] server list is updated: " + list);
             }
-
+            // 将新的 list 赋值给 serversFromEndpoint
             serversFromEndpoint = list;
+            // 获取更新结束的时间
             lastSrvRefTime = System.currentTimeMillis();
         } catch (Throwable e) {
             NAMING_LOGGER.warn("failed to update server list", e);
@@ -206,9 +215,11 @@ public class NamingProxy {
         params.put("weight", String.valueOf(instance.getWeight()));
         params.put("enable", String.valueOf(instance.isEnabled()));
         params.put("healthy", String.valueOf(instance.isHealthy()));
+        // 节点类型
         params.put("ephemeral", String.valueOf(instance.isEphemeral()));
+        // 元数据
         params.put("metadata", JSON.toJSONString(instance.getMetadata()));
-
+        // 这里根据请求类型作为区分，是什么类型操作，register操作为post请求  请求接口为instanceController
         reqAPI(UtilAndComs.NACOS_URL_INSTANCE, params, HttpMethod.POST);
 
     }
@@ -321,6 +332,13 @@ public class NamingProxy {
         return reqAPI(UtilAndComs.NACOS_URL_BASE + "/instance/list", params, HttpMethod.GET);
     }
 
+    /**
+     * NamingProxy的sendBeat方法会往/instance/beat接口发送PUT请求
+     * @param beatInfo
+     * @param lightBeatEnabled
+     * @return
+     * @throws NacosException
+     */
     public JSONObject sendBeat(BeatInfo beatInfo, boolean lightBeatEnabled) throws NacosException {
 
         if (NAMING_LOGGER.isDebugEnabled()) {
@@ -340,6 +358,7 @@ public class NamingProxy {
         params.put(CommonParams.CLUSTER_NAME, beatInfo.getCluster());
         params.put("ip", beatInfo.getIp());
         params.put("port", String.valueOf(beatInfo.getPort()));
+        // 心跳操作，这里为put请求
         String result = reqAPI(UtilAndComs.NACOS_URL_BASE + "/instance/beat", params, body, HttpMethod.PUT);
         return JSON.parseObject(result);
     }
@@ -401,6 +420,11 @@ public class NamingProxy {
         return reqAPI(api, params, body, getServerList(), method);
     }
 
+    /**
+     * 获取服务地址
+     * 优先以serverList作为server端地址列表，如果它为空再以serversFromEndpoint为准
+     * @return
+     */
     private List<String> getServerList() {
         List<String> snapshot = serversFromEndpoint;
         if (!CollectionUtils.isEmpty(serverList)) {
@@ -413,11 +437,23 @@ public class NamingProxy {
         return callServer(api, params, body, curServer, HttpMethod.GET);
     }
 
+    /**
+     * callServer方法会在执行完http请求之后通过
+     * @param api
+     * @param params
+     * @param body
+     * @param curServer
+     * @param method
+     * @return
+     * @throws NacosException
+     */
     public String callServer(String api, Map<String, String> params, String body, String curServer, String method)
         throws NacosException {
         long start = System.currentTimeMillis();
         long end = 0;
+        //处理token
         injectSecurityInfo(params);
+        // 构建请求头
         List<String> headers = builderHeaders();
 
         String url;
@@ -429,7 +465,8 @@ public class NamingProxy {
             }
             url = HttpClient.getPrefix() + curServer + api;
         }
-
+        // http://127.0.0.1:8848/nacos/v1/ns/instance 注册接口
+        // http://127.0.0.1:8848/nacos/v1/ns/instance/beat 心跳接口
         HttpClient.HttpResult result = HttpClient.request(url, headers, params, body, UtilAndComs.ENCODING, method);
         end = System.currentTimeMillis();
 
@@ -450,7 +487,7 @@ public class NamingProxy {
     public String reqAPI(String api, Map<String, String> params, String body, List<String> servers, String method) throws NacosException {
 
         params.put(CommonParams.NAMESPACE_ID, getNamespaceId());
-
+        // 校验参数 如果服务地址不存在，直接参数异常
         if (CollectionUtils.isEmpty(servers) && StringUtils.isEmpty(nacosDomain)) {
             throw new NacosException(NacosException.INVALID_PARAM, "no server available");
         }
@@ -460,8 +497,10 @@ public class NamingProxy {
         if (servers != null && !servers.isEmpty()) {
 
             Random random = new Random(System.currentTimeMillis());
+            // 这里 随机出一个数
             int index = random.nextInt(servers.size());
-
+            // 以servers.size()为最大循环次数开始for循环，循环里头根据index获取server然后通过callServer请求，
+            // 请求成功则跳出循环返回，请求失败则递增index并对servers.size()取余继续下次循环，如果都请求失败则最后抛出IllegalStateException
             for (int i = 0; i < servers.size(); i++) {
                 String server = servers.get(index);
                 try {

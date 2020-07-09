@@ -28,6 +28,8 @@ import javax.annotation.Resource;
 /**
  * Detect and control the working status of local server
  *
+ * nacos naming server中状态管理类。在启动时会执行executorService的定时调度器，每5ms执行一次调度，刷新serverStatus的值
+ *
  * @author nkorange
  * @since 1.0.0
  */
@@ -48,7 +50,8 @@ public class ServerStatusManager {
     }
 
     private void refreshServerStatus() {
-
+        // 首先判断overriddenServerStatus字段是否是blank，如果不空，说明最近已经被设置过状态了
+        // 只需要将overriddenServerStatus赋值给serverStatus即可。如果是空，则需要通过判断当前的一致性服务是否可用来决定
         if (StringUtils.isNotBlank(switchDomain.getOverriddenServerStatus())) {
             serverStatus = ServerStatus.valueOf(switchDomain.getOverriddenServerStatus());
             return;

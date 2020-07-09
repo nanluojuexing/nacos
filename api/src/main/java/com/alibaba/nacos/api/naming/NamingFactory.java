@@ -23,6 +23,8 @@ import com.alibaba.nacos.api.exception.NacosException;
 /**
  * Naming Factory
  *
+ * 命名工厂
+ *
  * @author nkorange
  */
 public class NamingFactory {

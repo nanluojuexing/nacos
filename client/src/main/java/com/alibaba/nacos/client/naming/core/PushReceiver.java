@@ -29,6 +29,9 @@ import java.util.concurrent.ThreadFactory;
 import static com.alibaba.nacos.client.utils.LogUtils.NAMING_LOGGER;
 
 /**
+ *
+ * 接受服务端发来的UDP报文，然后根据pushPacket.type要求作出响应，在服务更新的时候会带上UDP端口号
+ *
  * @author xuanyin
  */
 public class PushReceiver implements Runnable {
@@ -44,8 +47,9 @@ public class PushReceiver implements Runnable {
     public PushReceiver(HostReactor hostReactor) {
         try {
             this.hostReactor = hostReactor;
+            // 数据包
             udpSocket = new DatagramSocket();
-
+            // 开始线程接受数据包
             executorService = new ScheduledThreadPoolExecutor(1, new ThreadFactory() {
                 @Override
                 public Thread newThread(Runnable r) {
@@ -77,6 +81,8 @@ public class PushReceiver implements Runnable {
 
                 PushPacket pushPacket = JSON.parseObject(json, PushPacket.class);
                 String ack;
+                // 当pushPacket.type为dom或者service的时候会调用hostReactor.processServiceJSON(pushPacket.data)
+                // 当pushPacket.type为dump的时候会将hostReactor.getServiceInfoMap()序列化到ack中，最后将ack返回回去
                 if ("dom".equals(pushPacket.type) || "service".equals(pushPacket.type)) {
                     hostReactor.processServiceJSON(pushPacket.data);
 

@@ -36,23 +36,31 @@ public class EventDispatcher {
 
     private ExecutorService executor = null;
 
+    /**
+     * changedServices是个BlockingQueue阻塞队列，有改变的才会获取
+     */
     private BlockingQueue<ServiceInfo> changedServices = new LinkedBlockingQueue<ServiceInfo>();
 
+    /**
+     * 时间监听器
+     */
     private ConcurrentMap<String, List<EventListener>> observerMap
         = new ConcurrentHashMap<String, List<EventListener>>();
 
     public EventDispatcher() {
 
+        // 创建一个单线程的 监听队列的状态变更
         executor = Executors.newSingleThreadExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
                 Thread thread = new Thread(r, "com.alibaba.nacos.naming.client.listener");
+                // 这里设置为守护线程
                 thread.setDaemon(true);
 
                 return thread;
             }
         });
-
+        // 提交监听任务
         executor.execute(new Notifier());
     }
 
@@ -109,12 +117,16 @@ public class EventDispatcher {
         changedServices.add(serviceInfo);
     }
 
+    /**
+     * 监听队列变更,发布通知
+     */
     private class Notifier implements Runnable {
         @Override
         public void run() {
             while (true) {
                 ServiceInfo serviceInfo = null;
                 try {
+                    // 每隔5秒获取 队列栈顶中的元素
                     serviceInfo = changedServices.poll(5, TimeUnit.MINUTES);
                 } catch (Exception ignore) {
                 }
@@ -125,8 +137,9 @@ public class EventDispatcher {
 
                 try {
                     List<EventListener> listeners = observerMap.get(serviceInfo.getKey());
-
+                    // 校验监听器是否为空
                     if (!CollectionUtils.isEmpty(listeners)) {
+                        // 循环遍历，发布时间通知
                         for (EventListener listener : listeners) {
                             List<Instance> hosts = Collections.unmodifiableList(serviceInfo.getHosts());
                             listener.onEvent(new NamingEvent(serviceInfo.getName(), serviceInfo.getGroupName(), serviceInfo.getClusters(), hosts));

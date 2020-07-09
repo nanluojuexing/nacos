@@ -34,8 +34,14 @@ public class SwitchDomain implements Record, Cloneable {
 
     private long defaultPushCacheMillis = TimeUnit.SECONDS.toMillis(10);
 
+    /**
+     * 客户端的心跳频率
+     */
     private long clientBeatInterval = TimeUnit.SECONDS.toMillis(5);
 
+    /**
+     * 缓存时间
+     */
     private long defaultCacheMillis = TimeUnit.SECONDS.toMillis(3);
 
     private float distroThreshold = 0.7F;

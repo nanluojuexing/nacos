@@ -34,6 +34,8 @@ import java.util.concurrent.*;
 import static com.alibaba.nacos.client.utils.LogUtils.NAMING_LOGGER;
 
 /**
+ * 自动化备份
+ * FailoverReactor中初始化会延迟10秒后做一次备份，如果发现缓存的/failover目录下有文件，就会写入本地
  * @author nkorange
  */
 public class FailoverReactor {
@@ -65,7 +67,7 @@ public class FailoverReactor {
     public void init() {
 
         executorService.scheduleWithFixedDelay(new SwitchRefresher(), 0L, 5000L, TimeUnit.MILLISECONDS);
-
+        // 一天写一次
         executorService.scheduleWithFixedDelay(new DiskFileWriter(), 30, DAY_PERIOD_MINUTES, TimeUnit.MINUTES);
 
         // backup file on startup if failover directory is empty.
@@ -98,28 +100,36 @@ public class FailoverReactor {
         return startDT.getTime();
     }
 
+    /**
+     * 故障转移
+     *
+     * 查看缓存目录下的/failover/00-00---000-VIPSRV_FAILOVER_SWITCH-000---00-00文件，
+     * 看是否有改变，有改变就要设置相应的属性来表示是否开启故障转移模式，也就是做容灾备份的
+     */
     class SwitchRefresher implements Runnable {
         long lastModifiedMillis = 0L;
 
         @Override
         public void run() {
             try {
+                //是否有转移文件
                 File switchFile = new File(failoverDir + UtilAndComs.FAILOVER_SWITCH);
                 if (!switchFile.exists()) {
                     switchParams.put("failover-mode", "false");
                     NAMING_LOGGER.debug("failover switch is not found, " + switchFile.getName());
                     return;
                 }
-
+                // 上次修改时间
                 long modified = switchFile.lastModified();
-
+                //有改变
                 if (lastModifiedMillis < modified) {
                     lastModifiedMillis = modified;
                     String failover = ConcurrentDiskUtil.getFileContent(failoverDir + UtilAndComs.FAILOVER_SWITCH,
                         Charset.defaultCharset().toString());
+                    //获取文件内容
                     if (!StringUtils.isEmpty(failover)) {
                         List<String> lines = Arrays.asList(failover.split(DiskCache.getLineSeparator()));
-
+                        //根据内容进行容灾模式设置
                         for (String line : lines) {
                             String line1 = line.trim();
                             if ("1".equals(line1)) {
@@ -211,6 +221,9 @@ public class FailoverReactor {
         }
     }
 
+    /**
+     * 一天写一次，就是把服务信息写入本地
+     */
     class DiskFileWriter extends TimerTask {
         @Override
         public void run() {

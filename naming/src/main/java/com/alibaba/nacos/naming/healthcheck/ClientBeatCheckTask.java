@@ -34,6 +34,7 @@ import java.util.List;
 
 
 /**
+ * 检测和更新临时节点实例，移除过期的节点
  * Check and update statues of ephemeral instances, remove them if they have been expired.
  *
  * @author nkorange
@@ -84,6 +85,7 @@ public class ClientBeatCheckTask implements Runnable {
 
             // first set health status of instances:
             for (Instance instance : instances) {
+                // 当前时间 - 最后的心跳时间 > 获取心跳的超时时间 15秒
                 if (System.currentTimeMillis() - instance.getLastBeat() > instance.getInstanceHeartBeatTimeOut()) {
                     if (!instance.isMarked()) {
                         if (instance.isHealthy()) {
@@ -91,6 +93,7 @@ public class ClientBeatCheckTask implements Runnable {
                             Loggers.EVT_LOG.info("{POS} {IP-DISABLED} valid: {}:{}@{}@{}, region: {}, msg: client timeout after {}, last beat: {}",
                                 instance.getIp(), instance.getPort(), instance.getClusterName(), service.getName(),
                                 UtilsAndCommons.LOCALHOST_SITE, instance.getInstanceHeartBeatTimeOut(), instance.getLastBeat());
+                            // 发布服务变更事件
                             getPushService().serviceChanged(service);
                             SpringContext.getAppContext().publishEvent(new InstanceHeartbeatTimeoutEvent(this, instance));
                         }
@@ -101,7 +104,7 @@ public class ClientBeatCheckTask implements Runnable {
             if (!getGlobalConfig().isExpireInstance()) {
                 return;
             }
-
+            // 移除过期实例
             // then remove obsolete instances:
             for (Instance instance : instances) {
 

@@ -50,6 +50,9 @@ public class ServerListManager {
 
     private List<Server> servers = new ArrayList<>();
 
+    /**
+     * 存储健康的服务列表
+     */
     private List<Server> healthyServers = new ArrayList<>();
 
     private Map<String, List<Server>> distroConfig = new ConcurrentHashMap<>();
@@ -72,14 +75,16 @@ public class ServerListManager {
 
     @PostConstruct
     public void init() {
+         // 注册serverList的更新器，仍然是由GlobalExecutor来注册调度服务
         GlobalExecutor.registerServerListUpdater(new ServerListUpdater());
+        // 代码执行的功能是注册server status的上报器 2秒
         GlobalExecutor.registerServerStatusReporter(new ServerStatusReporter(), 2000);
     }
 
     private List<Server> refreshServerList() {
 
         List<Server> result = new ArrayList<>();
-
+        // 判断是不是单机模式
         if (STANDALONE_MODE) {
             Server server = new Server();
             server.setIp(NetUtils.getLocalAddress());
@@ -87,7 +92,7 @@ public class ServerListManager {
             result.add(server);
             return result;
         }
-
+        //  不是单机模式，读取clusterConf
         List<String> serverList = new ArrayList<>();
         try {
             serverList = readClusterConf();
@@ -99,7 +104,7 @@ public class ServerListManager {
             Loggers.SRV_LOG.debug("SERVER-LIST from cluster.conf: {}", result);
         }
 
-        //use system env
+        //use system env 如果从配置文件获取不到，则尝试从 启动的环境变量中取
         if (CollectionUtils.isEmpty(serverList)) {
             serverList = SystemUtils.getIPsBySystemEnv(UtilsAndCommons.SELF_SERVICE_CLUSTER_ENV);
             if (Loggers.SRV_LOG.isDebugEnabled()) {
@@ -286,6 +291,7 @@ public class ServerListManager {
         @Override
         public void run() {
             try {
+                // refreshServerList()刷新来获取最新的服务列表
                 List<Server> refreshedServers = refreshServerList();
                 List<Server> oldServers = servers;
 
@@ -296,6 +302,11 @@ public class ServerListManager {
 
                 boolean changed = false;
 
+                /**
+                 * 1， 获取新的serverList与old servers的差集，也即获得新加入的new servers，如果不为空，则加入到servers并置位changed = true。
+                 *
+                 * 2，获取old servers 与 新的serverList的差集，也即获得已经删掉的或者死去的server，并并从servers中删除并置位changed = true
+                 */
                 List<Server> newServers = (List<Server>) CollectionUtils.subtract(refreshedServers, oldServers);
                 if (CollectionUtils.isNotEmpty(newServers)) {
                     servers.addAll(newServers);
@@ -309,7 +320,7 @@ public class ServerListManager {
                     changed = true;
                     Loggers.RAFT.info("server list is updated, dead: {}, servers: {}", deadServers.size(), deadServers);
                 }
-
+                // servers发生了改变，则调用notifyListeners()发起通知
                 if (changed) {
                     notifyListeners();
                 }
@@ -326,13 +337,15 @@ public class ServerListManager {
         @Override
         public void run() {
             try {
-
+                // 首先判断本地server端口是否有效，再根据当前时间与上次时间戳的差值是否与指定阈值distroServerExpiredMillis 的进行大小比较，
+                // 来判定server的有效性并进行赋值，其中distroServerExpiredMillis 值是30ms
                 if (RunningConfig.getServerPort() <= 0) {
                     return;
                 }
 
                 checkDistroHeartbeat();
 
+                // 根据int weight = Runtime.getRuntime().availableProcessors() / 2;确定服务器的权重，即，根据服务器的性能判定改server的权重
                 int weight = Runtime.getRuntime().availableProcessors() / 2;
                 if (weight <= 0) {
                     weight = 1;
@@ -342,6 +355,7 @@ public class ServerListManager {
                 String status = LOCALHOST_SITE + "#" + NetUtils.localServer() + "#" + curTime + "#" + weight + "\r\n";
 
                 //send status to itself
+                // 给自己发送消息
                 onReceiveServerStatus(status);
 
                 List<Server> allServers = getServers();
@@ -350,13 +364,13 @@ public class ServerListManager {
                     Loggers.SRV_LOG.error("local ip is not in serverlist, ip: {}, serverlist: {}", NetUtils.localServer(), allServers);
                     return;
                 }
-
+                // 通知别的服务
                 if (allServers.size() > 0 && !NetUtils.localServer().contains(UtilsAndCommons.LOCAL_HOST_IP)) {
                     for (com.alibaba.nacos.naming.cluster.servers.Server server : allServers) {
                         if (server.getKey().equals(NetUtils.localServer())) {
                             continue;
                         }
-
+                        // 将自节点服务状态封装并发送
                         Message msg = new Message();
                         msg.setData(status);
 

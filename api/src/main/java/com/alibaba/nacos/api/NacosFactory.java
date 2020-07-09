@@ -28,6 +28,8 @@ import com.alibaba.nacos.api.naming.NamingService;
 /**
  * Nacos Factory
  *
+ * nacos工厂类
+ *
  * @author Nacos
  */
 public class NacosFactory {

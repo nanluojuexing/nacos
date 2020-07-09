@@ -68,6 +68,10 @@ import org.springframework.util.CollectionUtils;
 /**
  * Core manager storing all services in Nacos
  *
+ * ServiceManager是nacos naming server中service核心管理类
+ * 在启动时会执行一次本地信息到其他服务器，while(true)发生改变的service队列内容进行本地更新
+ * 同时启动对com.alibaba.nacos.naming.domains.meta.前缀的key的监听；在运行过程中，执行controller接受的相关请求的功能，完成本地状态和远程服务器同步
+ *
  * @author nkorange
  */
 @Component
@@ -75,6 +79,7 @@ import org.springframework.util.CollectionUtils;
 public class ServiceManager implements RecordListener<Service> {
 
     /**
+     * 本地服务缓存
      * Map<namespace, Map<group::serviceName, Service>>
      */
     private Map<String, Map<String, Service>> serviceMap = new ConcurrentHashMap<>();
@@ -119,8 +124,22 @@ public class ServiceManager implements RecordListener<Service> {
     @PostConstruct
     public void init() {
 
+        // bean初始化之后，执行一次调度，调度由ServiceReporter来执行
+        // 方法首先遍历serviceMap(Map<namespace, Map<group::serviceName, Service>>),如果size >0 且 distroMapper.responsible(serviceName)为true继续向下执行
+        // 通过getService(namespaceId, serviceName)获取到Service实例service
+        // 如果service不为空，通过对该service下所有Instance实例组成的ip.getIp() + ":" + ip.getPort() + "_" + ip.getWeight() + "_"+ ip.isHealthy() + "_" + ip.getClusterName()执行md5来获得该service对应的checksum
+        // 再将service的checksum封装为Message实例msg,再将该消息同步到出自已以外的所有服务器。器质性同步的过程是通过async http post请求path /nacos/v1/ns/service/status来执行的，此处不关心执行结果，异步执行
         UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR.schedule(new ServiceReporter(), 60000, TimeUnit.MILLISECONDS);
-
+        //启动一个新的UpdatedServiceProcessor线程并直接执行while (true)，简单粗暴
+        // 该循环会一直尝试从LinkedBlockingDeque<ServiceKey>的toBeUpdatedServicesQueue实例来获取需要被更新的ServiceKey
+        // 该ServiceKey是由namespaceId+serviceName+serverIP+checksum组成的，而toBeUpdatedServicesQueue就是由外部consumer、provider、console、openapi对实例进行变更时
+        // 被该server收到，并offer进去的。获取到ServiceKey后继续向下执行，由GlobalExecutor启动一个新的ServiceUpdater线程，对本地执行线程状态更新updatedHealthStatus(namespaceId, serviceName, serverIP)
+        // 具体执行逻辑是通过ServiceStatusSynchronizer实例synchronizer的get方法
+        // 通过NamingProxy.reqAPI方法对ServiceKey中包含的server发起http同步get调用
+        // 调用的path是/nacos/v1/ns/instance/statuses,并获返回result的数据组装成Message实例msg。将get到的实例msg进行解析和对比更新到service
+        // 并准备通过PushService的serviceChanged(service)来将更新推送到连接到本服务器的client
+        // 具体过程是通过调用ApplicationContext实例applicationContext的publishEvent()方法，来将封装成的ServiceChangeEvent实例发送出去
+        // 需要指出的是为了降低推送频率这里有一个futureMap.containsKey(UtilsAndCommons.assembleFullServiceName(service.getNamespaceId(), service.getName()))的判断，只有为false时才发送事件
         UtilsAndCommons.SERVICE_UPDATE_EXECUTOR.submit(new UpdatedServiceProcessor());
 
         if (emptyServiceAutoClean) {
@@ -138,6 +157,7 @@ public class ServiceManager implements RecordListener<Service> {
 
         try {
             Loggers.SRV_LOG.info("listen for service meta change");
+            // 该模块主要是启动对service meta change的监听，该模块由代码consistencyService.listen(KeyBuilder.SERVICE_META_KEY_PREFIX, this);来执行
             consistencyService.listen(KeyBuilder.SERVICE_META_KEY_PREFIX, this);
         } catch (NacosException e) {
             Loggers.SRV_LOG.error("listen for service meta change failed!");
@@ -459,9 +479,10 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     public void createServiceIfAbsent(String namespaceId, String serviceName, boolean local, Cluster cluster) throws NacosException {
+        // 从缓存中获取服务实例
         Service service = getService(namespaceId, serviceName);
         if (service == null) {
-
+            // 服务不存在的时候，创建一个
             Loggers.SRV_LOG.info("creating empty service {}:{}", namespaceId, serviceName);
             service = new Service();
             service.setName(serviceName);
@@ -475,8 +496,9 @@ public class ServiceManager implements RecordListener<Service> {
                 service.getClusterMap().put(cluster.getName(), cluster);
             }
             service.validate();
-
+            // 将新建的服务，初始化，并存入缓存
             putServiceAndInit(service);
+            // local判断是不是你临时节点，临时节点为true
             if (!local) {
                 addOrReplaceService(service);
             }
@@ -484,6 +506,8 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     /**
+     *
+     * service-> cluster -> instance
      * Register an instance to a service in AP mode.
      * <p>
      * This method creates service or cluster silently if they don't exist.
@@ -495,6 +519,9 @@ public class ServiceManager implements RecordListener<Service> {
      */
     public void registerInstance(String namespaceId, String serviceName, Instance instance) throws NacosException {
 
+        //判断本地缓存中是否存在该命名空间，如果不存在就创建，之后判断该命名空间下是否
+        //存在该服务，如果不存在就创建空的服务
+        //注意这里并没有更新服务的实例信息
         createEmptyService(namespaceId, serviceName, instance.isEphemeral());
 
         Service service = getService(namespaceId, serviceName);
@@ -503,7 +530,7 @@ public class ServiceManager implements RecordListener<Service> {
             throw new NacosException(NacosException.INVALID_PARAM,
                 "service not found, namespace: " + namespaceId + ", service: " + serviceName);
         }
-
+        // 增加服务实例
         addInstance(namespaceId, serviceName, instance.isEphemeral(), instance);
     }
 
@@ -526,7 +553,7 @@ public class ServiceManager implements RecordListener<Service> {
     public void addInstance(String namespaceId, String serviceName, boolean ephemeral, Instance... ips) throws NacosException {
 
         String key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
-
+        // namespaceId以及serviceName获取service对象，并将Instance[]数组注册到service中
         Service service = getService(namespaceId, serviceName);
 
         synchronized (service) {
@@ -582,6 +609,18 @@ public class ServiceManager implements RecordListener<Service> {
         return null;
     }
 
+    /**
+     * 其实就是更新Instance注册后，需要更新Instance实例的addr信息，然后将更新后的Instance地址列表信息返回，
+     * 更新Service下的Instance的列表信息，
+     * 也就是刚刚的addInstance(String namespaceId, String serviceName, boolean ephemeral, Instance... ips)函数的后面三行代码
+     * 到此，Instance从Nacos Client端注册到Nacos Server的流程就完了
+     * @param service
+     * @param action
+     * @param ephemeral
+     * @param ips
+     * @return
+     * @throws NacosException
+     */
     public List<Instance> updateIpAddresses(Service service, String action, boolean ephemeral, Instance... ips) throws NacosException {
 
         Datum datum = consistencyService.get(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), ephemeral));
@@ -673,8 +712,11 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     private void putServiceAndInit(Service service) throws NacosException {
+        // 创建本地服务缓存
         putService(service);
+        // 启动一个定时检测的任务
         service.init();
+        // 如果是一个临时的Instance，则Nacos Server会为其设置一致性consistencyService的listener
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), true), service);
         consistencyService.listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), false), service);
         Loggers.SRV_LOG.info("[NEW-SERVICE] {}", service.toJSON());

@@ -27,9 +27,21 @@ import java.util.Map;
 /**
  * Report local server status to other server
  *
+ * 主要实现对server的status相关操作，仔细看可以发现，仅有send的方法实现
+ * 同样也是走HttpClient的asyncHttpGet方法来直接实现异步http的远程调用，并没有经过代理，其中path中有一节是/operator，说明是由OperatorController来处理
+ *
  * @author nacos
  */
 public class ServerStatusSynchronizer implements Synchronizer {
+
+    /**
+     * asyncHttpGet方法发送出去的，也就是异步http的get方法，
+     * 其发送path是RunningConfig.getContextPath() + UtilsAndCommons.NACOS_NAMING_CONTEXT + "/operator/server/status"，
+     * 其中RunningConfig.getContextPath()默认是/nacos,即/nacos/v1/ns/operator/server/status
+
+     * @param serverIP target server address
+     * @param msg      message to send
+     */
     @Override
     public void send(final String serverIP, Message msg) {
         if (StringUtils.isEmpty(serverIP)) {

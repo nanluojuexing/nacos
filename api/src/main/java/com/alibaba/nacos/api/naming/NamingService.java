@@ -27,16 +27,19 @@ import java.util.List;
 /**
  * Naming Service
  *
+ * 命名服务接口
+ *
  * @author nkorange
  */
 public interface NamingService {
 
     /**
+     * 注册服务实例
      * register a instance to service
      *
-     * @param serviceName name of service
-     * @param ip          instance ip
-     * @param port        instance port
+     * @param serviceName name of service 服务名称
+     * @param ip          instance ip ip地址
+     * @param port        instance port 端口号
      * @throws NacosException
      */
     void registerInstance(String serviceName, String ip, int port) throws NacosException;

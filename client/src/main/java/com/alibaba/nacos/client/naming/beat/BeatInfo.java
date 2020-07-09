@@ -20,6 +20,7 @@ import com.alibaba.fastjson.JSON;
 import java.util.Map;
 
 /**
+ * 心跳信息
  * @author nkorange
  */
 public class BeatInfo {

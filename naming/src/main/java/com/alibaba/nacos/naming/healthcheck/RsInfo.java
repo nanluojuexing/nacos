@@ -22,6 +22,8 @@ import java.util.Map;
 /**
  * Metrics info of server
  *
+ * metrics 信息
+ *
  * @author nacos
  */
 public class RsInfo {

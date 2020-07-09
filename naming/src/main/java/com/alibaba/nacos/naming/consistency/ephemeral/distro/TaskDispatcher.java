@@ -53,11 +53,13 @@ public class TaskDispatcher {
         for (int i = 0; i < cpuCoreCount; i++) {
             TaskScheduler taskScheduler = new TaskScheduler(i);
             taskSchedulerList.add(taskScheduler);
+            // 提交转发任务
             GlobalExecutor.submitTaskDispatch(taskScheduler);
         }
     }
 
     public void addTask(String key) {
+        // 往队列中添加数据
         taskSchedulerList.get(UtilsAndCommons.shakeUp(key, cpuCoreCount)).addTask(key);
     }
 
@@ -87,6 +89,7 @@ public class TaskDispatcher {
         public void run() {
 
             List<String> keys = new ArrayList<>();
+            // 循环监听数据
             while (true) {
 
                 try {
@@ -112,7 +115,7 @@ public class TaskDispatcher {
 
                     keys.add(key);
                     dataSize++;
-
+                    // 实例达到1000，或者上次同步时间超过2秒
                     if (dataSize == partitionConfig.getBatchSyncKeyCount() ||
                         (System.currentTimeMillis() - lastDispatchTime) > partitionConfig.getTaskDispatchPeriod()) {
 

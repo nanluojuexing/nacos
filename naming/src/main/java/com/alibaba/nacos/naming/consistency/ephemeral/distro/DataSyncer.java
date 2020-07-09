@@ -37,6 +37,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Data replicator
  *
+ * 数据复制类 ap模式
+ *
  * @author nkorange
  * @since 1.0.0
  */
@@ -113,6 +115,7 @@ public class DataSyncer {
             byte[] data = serializer.serialize(datumMap);
 
             long timestamp = System.currentTimeMillis();
+            // 数据同步
             boolean success = NamingProxy.syncData(data, task.getTargetServer());
             if (!success) {
                 SyncTask syncTask = new SyncTask();

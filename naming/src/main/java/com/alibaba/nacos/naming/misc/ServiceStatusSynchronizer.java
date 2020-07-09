@@ -26,6 +26,10 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
+ * 主要实现对service的status相关操作，send和get的远程调用方式并不一样
+ * 其中send直接调用的HttpClient的异步asyncHttpPostLarge方法，专门用来处理post大数据量封装，而其中一节的/service也表明，将会由ServiceController来处理该请求
+ * 其中get则通过NamingProxy的reqAPI方法经过一步代理来实现，进一步看代理实现的方法，其中调用到 result = HttpClient.httpGet("http://" + curServer + api, headers, params);
+ * 看出，最终也是使用HttpClient的httpGet方法进行调用，其中path中有一节/instance，说明会有InstanceController来处理此请求
  * @author nacos
  */
 public class ServiceStatusSynchronizer implements Synchronizer {

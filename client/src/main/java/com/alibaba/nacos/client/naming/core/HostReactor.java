@@ -64,7 +64,7 @@ public class HostReactor {
 
     public HostReactor(EventDispatcher eventDispatcher, NamingProxy serverProxy, String cacheDir,
                        boolean loadCacheAtStart, int pollingThreadCount) {
-
+        // 定时任务线程，
         executor = new ScheduledThreadPoolExecutor(pollingThreadCount, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -79,13 +79,16 @@ public class HostReactor {
         this.serverProxy = serverProxy;
         this.cacheDir = cacheDir;
         if (loadCacheAtStart) {
+            // 加载缓存中的服务信息
             this.serviceInfoMap = new ConcurrentHashMap<String, ServiceInfo>(DiskCache.read(this.cacheDir));
         } else {
             this.serviceInfoMap = new ConcurrentHashMap<String, ServiceInfo>(16);
         }
 
         this.updatingMap = new ConcurrentHashMap<String, Object>();
+        // FailoverReactor 中初始化会延迟10秒后做一次备份，如果发现缓存的/failover目录下有文件，就会写入本地
         this.failoverReactor = new FailoverReactor(this, cacheDir);
+        // 接受服务端发来的UDP报文，然后根据pushPacket.type要求作出响应，在服务更新的时候会带上UDP端口号
         this.pushReceiver = new PushReceiver(this);
     }
 
@@ -97,6 +100,16 @@ public class HostReactor {
         return executor.schedule(task, DEFAULT_DELAY, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * processServiceJSON方法会对比将接收到serviceInfo与本地对比，
+     * 然后判断是否变更，
+     * 并在需要的时候更新本地的serviceInfo并回调eventDispatcher.serviceChanged(serviceInfo)以及DiskCache.write(serviceInfo, cacheDir);
+     * HostReactor的构造器有个loadCacheAtStart参数(默认为false)，
+     * 如果为true则会使用DiskCache.read(this.cacheDir)从本地文件读取serviceInfo信息来初始化serviceInfoMap
+
+     * @param json
+     * @return
+     */
     public ServiceInfo processServiceJSON(String json) {
         ServiceInfo serviceInfo = JSON.parseObject(json, ServiceInfo.class);
         ServiceInfo oldService = serviceInfoMap.get(serviceInfo.getKey());
@@ -108,7 +121,7 @@ public class HostReactor {
         boolean changed = false;
 
         if (oldService != null) {
-
+            // 对比刷新时间
             if (oldService.getLastRefTime() > serviceInfo.getLastRefTime()) {
                 NAMING_LOGGER.warn("out of date data received, old-t: " + oldService.getLastRefTime()
                     + ", new-t: " + serviceInfo.getLastRefTime());
@@ -219,6 +232,12 @@ public class HostReactor {
         return null;
     }
 
+    /**
+     *
+     * @param serviceName
+     * @param clusters
+     * @return
+     */
     public ServiceInfo getServiceInfo(final String serviceName, final String clusters) {
 
         NAMING_LOGGER.debug("failover-mode: " + failoverReactor.isFailoverSwitch());
@@ -317,18 +336,20 @@ public class HostReactor {
             long delayTime = -1;
 
             try {
+                //获取服务名相关的服务信息
                 ServiceInfo serviceObj = serviceInfoMap.get(ServiceInfo.getKey(serviceName, clusters));
-
+                //不存在的话直接更新
                 if (serviceObj == null) {
                     updateServiceNow(serviceName, clusters);
                     delayTime = DEFAULT_DELAY;
                     return;
                 }
-
+                //还没更新过，要更新后比较
                 if (serviceObj.getLastRefTime() <= lastRefTime) {
                     updateServiceNow(serviceName, clusters);
                     serviceObj = serviceInfoMap.get(ServiceInfo.getKey(serviceName, clusters));
                 } else {
+                    // 已经更新的过的，直接push
                     // if serviceName already updated by push, we should not override it
                     // since the push data may be different from pull through force push
                     refreshOnly(serviceName, clusters);

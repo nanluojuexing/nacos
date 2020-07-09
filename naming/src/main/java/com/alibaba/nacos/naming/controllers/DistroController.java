@@ -60,6 +60,12 @@ public class DistroController {
     @Autowired
     private SwitchDomain switchDomain;
 
+    /**
+     * 接受同步的数据
+     * @param dataMap
+     * @return
+     * @throws Exception
+     */
     @PutMapping("/datum")
     public ResponseEntity onSyncDatum(@RequestBody Map<String, Datum<Instances>> dataMap) throws Exception {
 

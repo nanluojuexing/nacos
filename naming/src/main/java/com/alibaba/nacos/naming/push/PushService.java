@@ -132,6 +132,10 @@ public class PushService implements ApplicationContextAware, ApplicationListener
         this.applicationContext = applicationContext;
     }
 
+    /**
+     * 监听服务变更
+     * @param event
+     */
     @Override
     public void onApplicationEvent(ServiceChangeEvent event) {
         Service service = event.getService();
@@ -182,7 +186,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
 
                         Loggers.PUSH.info("serviceName: {} changed, schedule push for: {}, agent: {}, key: {}",
                             client.getServiceName(), client.getAddrStr(), client.getAgent(), (ackEntry == null ? null : ackEntry.key));
-
+                        //
                         udpPush(ackEntry);
                     }
                 } catch (Exception e) {

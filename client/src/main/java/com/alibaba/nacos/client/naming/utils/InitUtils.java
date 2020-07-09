@@ -40,11 +40,10 @@ public class InitUtils {
     public static String initNamespaceForNaming(Properties properties) {
         String tmpNamespace = null;
 
-
+        // 判断是否
         String isUseCloudNamespaceParsing =
             properties.getProperty(PropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
-                System.getProperty(SystemPropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING,
-                    String.valueOf(Constants.DEFAULT_USE_CLOUD_NAMESPACE_PARSING)));
+                System.getProperty(SystemPropertyKeyConst.IS_USE_CLOUD_NAMESPACE_PARSING, String.valueOf(Constants.DEFAULT_USE_CLOUD_NAMESPACE_PARSING)));
 
         if (Boolean.parseBoolean(isUseCloudNamespaceParsing)) {
 
@@ -105,6 +104,11 @@ public class InitUtils {
         });
     }
 
+    /**
+     * 初始化端点 endpoint
+     * @param properties
+     * @return
+     */
     public static String initEndpoint(final Properties properties) {
         if (properties == null) {
 

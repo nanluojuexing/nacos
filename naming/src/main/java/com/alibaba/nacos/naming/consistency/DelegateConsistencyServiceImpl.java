@@ -55,6 +55,10 @@ public class DelegateConsistencyServiceImpl implements ConsistencyService {
     @Override
     public void listen(String key, RecordListener listener) throws NacosException {
 
+        // 首先判断该key是否是special key，即以com.alibaba.nacos.naming.domains.meta.为前缀的key,
+        //如果是，那么persistentConsistencyService和ephemeralConsistencyService都会启动监听；如果不是那么
+        //根据key判断到底启动上述监听器中的哪一个。判断的具体逻辑在KeyBuilder中的matchEphemeralInstanceListKey方法中
+
         // this special key is listened by both:
         if (KeyBuilder.SERVICE_META_KEY_PREFIX.equals(key)) {
             persistentConsistencyService.listen(key, listener);
