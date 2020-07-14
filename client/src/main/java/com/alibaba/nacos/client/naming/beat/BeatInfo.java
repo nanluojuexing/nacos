@@ -32,7 +32,9 @@ public class BeatInfo {
     private String cluster;
     private Map<String, String> metadata;
     private volatile boolean scheduled;
+    // 发送心跳周期的一个条件
     private volatile long period;
+    // 用于置位表示，是否要停止向server发送心跳消息
     private volatile boolean stopped;
 
     @Override

@@ -73,6 +73,7 @@ public class ClientBeatCheckTask implements Runnable {
     @Override
     public void run() {
         try {
+            //判断是否本机负责的服务
             if (!getDistroMapper().responsible(service.getName())) {
                 return;
             }

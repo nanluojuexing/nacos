@@ -32,6 +32,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * Data sync task dispatcher
  *
+ * 数据同步器
+ *
  * @author nkorange
  * @since 1.0.0
  */
@@ -63,6 +65,9 @@ public class TaskDispatcher {
         taskSchedulerList.get(UtilsAndCommons.shakeUp(key, cpuCoreCount)).addTask(key);
     }
 
+    /**
+     * 定时检测任务
+     */
     public class TaskScheduler implements Runnable {
 
         private int index;
@@ -93,7 +98,7 @@ public class TaskDispatcher {
             while (true) {
 
                 try {
-
+                    // 阻塞 2 秒 获取key
                     String key = queue.poll(partitionConfig.getTaskDispatchPeriod(),
                         TimeUnit.MILLISECONDS);
 
@@ -118,8 +123,9 @@ public class TaskDispatcher {
                     // 实例达到1000，或者上次同步时间超过2秒
                     if (dataSize == partitionConfig.getBatchSyncKeyCount() ||
                         (System.currentTimeMillis() - lastDispatchTime) > partitionConfig.getTaskDispatchPeriod()) {
-
+                        // 获取集群的服务器
                         for (Server member : dataSyncer.getServers()) {
+                            // 如果是自己就跳过，本机不同步
                             if (NetUtils.localServer().equals(member.getKey())) {
                                 continue;
                             }

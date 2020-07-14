@@ -61,6 +61,9 @@ public class DataSyncer {
     @Autowired
     private ServerListManager serverListManager;
 
+    /**
+     * 缓存任务
+     */
     private Map<String, String> taskMap = new ConcurrentHashMap<>();
 
     @PostConstruct
@@ -71,8 +74,10 @@ public class DataSyncer {
     public void submit(SyncTask task, long delay) {
 
         // If it's a new task:
+        // 发送新任务
         if (task.getRetryCount() == 0) {
             Iterator<String> iterator = task.getKeys().iterator();
+            // 去重
             while (iterator.hasNext()) {
                 String key = iterator.next();
                 if (StringUtils.isNotBlank(taskMap.putIfAbsent(buildKey(key, task.getTargetServer()), key))) {
@@ -80,6 +85,7 @@ public class DataSyncer {
                     if (Loggers.DISTRO.isDebugEnabled()) {
                         Loggers.DISTRO.debug("sync already in process, key: {}", key);
                     }
+                    //删除新的任务里的key，理论上应该是删除旧的，但是此时旧的可能已经在执行了，所以删除新的
                     iterator.remove();
                 }
             }
@@ -89,7 +95,7 @@ public class DataSyncer {
             // all keys are removed:
             return;
         }
-
+        //全局执行器执行数据同步任务
         GlobalExecutor.submitDataSync(() -> {
             // 1. check the server
             if (getServers() == null || getServers().isEmpty()) {
@@ -103,6 +109,7 @@ public class DataSyncer {
                 Loggers.SRV_LOG.debug("try to sync data for this keys {}.", keys);
             }
             // 2. get the datums by keys and check the datum is empty or not
+            // 这里又会去重一次，应该keys里可能有重复的，但是里面获取的时候去重了
             Map<String, Datum> datumMap = dataStore.batchGet(keys);
             if (datumMap == null || datumMap.isEmpty()) {
                 // clear all flags of this task:
@@ -112,11 +119,13 @@ public class DataSyncer {
                 return;
             }
 
+            //服务实例集合序列化
             byte[] data = serializer.serialize(datumMap);
 
             long timestamp = System.currentTimeMillis();
             // 数据同步
             boolean success = NamingProxy.syncData(data, task.getTargetServer());
+            // 失败重试
             if (!success) {
                 SyncTask syncTask = new SyncTask();
                 syncTask.setKeys(task.getKeys());
@@ -157,6 +166,9 @@ public class DataSyncer {
         GlobalExecutor.schedulePartitionDataTimedSync(new TimedSync());
     }
 
+    /**
+     * 兜底策略 每5秒执行
+     */
     public class TimedSync implements Runnable {
 
         @Override
@@ -170,6 +182,7 @@ public class DataSyncer {
 
                 // send local timestamps to other servers:
                 Map<String, String> keyChecksums = new HashMap<>(64);
+                // 这里并不是同步所有的数据，而是遍历所有的数据，将属于自己管理那部分数据才会同步
                 for (String key : dataStore.keys()) {
                     if (!distroMapper.responsible(KeyBuilder.getServiceName(key))) {
                         continue;

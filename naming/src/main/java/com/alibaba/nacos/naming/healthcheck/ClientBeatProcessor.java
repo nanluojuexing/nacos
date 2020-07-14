@@ -70,6 +70,7 @@ public class ClientBeatProcessor implements Runnable {
         String clusterName = rsInfo.getCluster();
         int port = rsInfo.getPort();
         Cluster cluster = service.getClusterMap().get(clusterName);
+        // 获取集群下的所有的临时服务实例
         List<Instance> instances = cluster.allIPs(true);
 
         for (Instance instance : instances) {
@@ -79,8 +80,11 @@ public class ClientBeatProcessor implements Runnable {
                 }
                 // 设置最后的心跳时间
                 instance.setLastBeat(System.currentTimeMillis());
+                // 没有被标记
                 if (!instance.isMarked()) {
+                    // 不健康的
                     if (!instance.isHealthy()) {
+                        // 设置为健康
                         instance.setHealthy(true);
                         Loggers.EVT_LOG.info("service: {} {POS} {IP-ENABLED} valid: {}:{}@{}, region: {}, msg: client beat ok",
                             cluster.getService().getName(), ip, port, cluster.getName(), UtilsAndCommons.LOCALHOST_SITE);

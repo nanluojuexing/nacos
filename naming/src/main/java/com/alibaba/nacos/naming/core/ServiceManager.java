@@ -79,7 +79,8 @@ import org.springframework.util.CollectionUtils;
 public class ServiceManager implements RecordListener<Service> {
 
     /**
-     * 本地服务缓存
+     *
+     * 命名空间         组@@服务名         服务实例
      * Map<namespace, Map<group::serviceName, Service>>
      */
     private Map<String, Map<String, Service>> serviceMap = new ConcurrentHashMap<>();
@@ -495,6 +496,7 @@ public class ServiceManager implements RecordListener<Service> {
                 cluster.setService(service);
                 service.getClusterMap().put(cluster.getName(), cluster);
             }
+            //服务验证，服务和集群名验证
             service.validate();
             // 将新建的服务，初始化，并存入缓存
             putServiceAndInit(service);
@@ -519,8 +521,8 @@ public class ServiceManager implements RecordListener<Service> {
      */
     public void registerInstance(String namespaceId, String serviceName, Instance instance) throws NacosException {
 
-        //判断本地缓存中是否存在该命名空间，如果不存在就创建，之后判断该命名空间下是否
-        //存在该服务，如果不存在就创建空的服务
+        //判断本地缓存中是否存在该命名空间，如果不存在就创建
+        //之后判断该命名空间下是否存在该服务，如果不存在就创建空的服务
         //注意这里并没有更新服务的实例信息
         createEmptyService(namespaceId, serviceName, instance.isEphemeral());
 
@@ -555,8 +557,9 @@ public class ServiceManager implements RecordListener<Service> {
         String key = KeyBuilder.buildInstanceListKey(namespaceId, serviceName, ephemeral);
         // namespaceId以及serviceName获取service对象，并将Instance[]数组注册到service中
         Service service = getService(namespaceId, serviceName);
-
+        // 这里再判断下service是否为null比较好，因为可能这个时候也为空，synchronized锁空对象会报异常，空对象没monitor了
         synchronized (service) {
+            //获取所有该服务的实例
             List<Instance> instanceList = addIpAddresses(service, ephemeral, ips);
 
             Instances instances = new Instances();
@@ -622,11 +625,13 @@ public class ServiceManager implements RecordListener<Service> {
      * @throws NacosException
      */
     public List<Instance> updateIpAddresses(Service service, String action, boolean ephemeral, Instance... ips) throws NacosException {
-
+        // 获得老的数据实例集合
         Datum datum = consistencyService.get(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), ephemeral));
-
+        //获取集群中所有相关的实例集合，临时的或者是永久的
         List<Instance> currentIPs = service.allIPs(ephemeral);
+        //IP端口和实例的映射
         Map<String, Instance> currentInstances = new HashMap<>(currentIPs.size());
+        // 当前实例id的集合
         Set<String> currentInstanceIds = Sets.newHashSet();
 
         for (Instance instance : currentIPs) {
@@ -634,7 +639,9 @@ public class ServiceManager implements RecordListener<Service> {
             currentInstanceIds.add(instance.getInstanceId());
         }
 
+        //更新后的老的实例集合
         Map<String, Instance> instanceMap;
+        //根据当前服务实例的健康标志和心跳时间，来更新老的实例集合数据
         if (datum != null) {
             instanceMap = setValid(((Instances) datum.value).getInstanceList(), currentInstances);
         } else {
@@ -642,14 +649,17 @@ public class ServiceManager implements RecordListener<Service> {
         }
 
         for (Instance instance : ips) {
+            //不存在就创建服务实例集群
             if (!service.getClusterMap().containsKey(instance.getClusterName())) {
                 Cluster cluster = new Cluster(instance.getClusterName(), service);
+                // 初始化，开启集群心跳检测
                 cluster.init();
+                // 添加服务实例
                 service.getClusterMap().put(instance.getClusterName(), cluster);
                 Loggers.SRV_LOG.warn("cluster: {} not found, ip: {}, will create new cluster with default configuration.",
                     instance.getClusterName(), instance.toJSON());
             }
-
+            //删除操作的话就删除老的实例集合的数据
             if (UtilsAndCommons.UPDATE_INSTANCE_ACTION_REMOVE.equals(action)) {
                 instanceMap.remove(instance.getDatumKey());
             } else {
@@ -701,6 +711,7 @@ public class ServiceManager implements RecordListener<Service> {
     }
 
     public void putService(Service service) {
+        //如果还没有命名空间就增加命名一个空间
         if (!serviceMap.containsKey(service.getNamespaceId())) {
             synchronized (putServiceLock) {
                 if (!serviceMap.containsKey(service.getNamespaceId())) {
@@ -908,19 +919,20 @@ public class ServiceManager implements RecordListener<Service> {
         @Override
         public void run() {
             try {
-
+                // 获得多有的服务
                 Map<String, Set<String>> allServiceNames = getAllServiceNames();
-
+                // 如果没有服务，忽略
                 if (allServiceNames.size() <= 0) {
                     //ignore
                     return;
                 }
-
+                // 遍历服务
                 for (String namespaceId : allServiceNames.keySet()) {
 
                     ServiceChecksum checksum = new ServiceChecksum(namespaceId);
 
                     for (String serviceName : allServiceNames.get(namespaceId)) {
+                        //
                         if (!distroMapper.responsible(serviceName)) {
                             continue;
                         }
@@ -935,7 +947,7 @@ public class ServiceManager implements RecordListener<Service> {
 
                         checksum.addItem(serviceName, service.getChecksum());
                     }
-
+                    // 构建发送的消息
                     Message msg = new Message();
 
                     msg.setData(JSON.toJSONString(checksum));
@@ -947,6 +959,7 @@ public class ServiceManager implements RecordListener<Service> {
                     }
 
                     for (Server server : sameSiteServers) {
+                        // 如果是自己，直接跳过
                         if (server.getKey().equals(NetUtils.localServer())) {
                             continue;
                         }

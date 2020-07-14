@@ -278,7 +278,7 @@ public class NacosNamingService implements NamingService {
             beatInfo.setScheduled(false);
             // 设置心跳周期，默认为5秒
             beatInfo.setPeriod(instance.getInstanceHeartBeatInterval());
-
+            //可以看出如果不是临时节点是不需要发送心跳消息的
             beatReactor.addBeatInfo(NamingUtils.getGroupedName(serviceName, groupName), beatInfo);
         }
         // 服务注册
@@ -492,6 +492,7 @@ public class NacosNamingService implements NamingService {
 
     @Override
     public void subscribe(String serviceName, String groupName, List<String> clusters, EventListener listener) throws NacosException {
+        // getServiceInfo中，会调用HostReactor的updateServiceNow方法，从服务端获取服务实例列表
         eventDispatcher.addListener(hostReactor.getServiceInfo(NamingUtils.getGroupedName(serviceName, groupName),
             StringUtils.join(clusters, ",")), StringUtils.join(clusters, ","), listener);
     }

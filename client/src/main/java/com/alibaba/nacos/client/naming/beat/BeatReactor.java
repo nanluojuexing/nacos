@@ -74,6 +74,7 @@ public class BeatReactor {
         if ((existBeat = dom2Beat.remove(key)) != null) {
             existBeat.setStopped(true);
         }
+        //用于监控统计serviceName + ip + port位key
         dom2Beat.put(key, beatInfo);
         // 添加调度任务
         executorService.schedule(new BeatTask(beatInfo), beatInfo.getPeriod(), TimeUnit.MILLISECONDS);
@@ -154,6 +155,7 @@ public class BeatReactor {
                     JSON.toJSONString(beatInfo), ne.getErrCode(), ne.getErrMsg());
 
             }
+            //发送完上一个心跳后，延迟nextTime，继续发送下一个心跳
             executorService.schedule(new BeatTask(beatInfo), nextTime, TimeUnit.MILLISECONDS);
         }
     }

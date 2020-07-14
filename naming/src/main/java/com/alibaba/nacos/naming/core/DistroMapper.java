@@ -63,6 +63,11 @@ public class DistroMapper implements ServerChangeListener {
             && cluster.contains(instance);
     }
 
+    /**
+     *
+     * @param serviceName
+     * @return
+     */
     public boolean responsible(String serviceName) {
         if (!switchDomain.isDistroEnabled() || SystemUtils.STANDALONE_MODE) {
             return true;
@@ -73,6 +78,7 @@ public class DistroMapper implements ServerChangeListener {
             return false;
         }
 
+        // 获取到 当前节点的索引位置
         int index = healthyList.indexOf(NetUtils.localServer());
         int lastIndex = healthyList.lastIndexOf(NetUtils.localServer());
         if (lastIndex < 0 || index < 0) {

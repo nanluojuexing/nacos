@@ -35,6 +35,10 @@ import static com.alibaba.nacos.core.utils.SystemUtils.*;
 /**
  * The manager to globally refresh and operate server list.
  *
+ * nacos naming server中list核心管理类。在启动时会执行一次本地信息到其他服务器，
+ * while(true)发生改变的service队列内容进行本地更新，
+ * 同时启动对 com.alibaba.nacos.naming.domains.meta.前缀的key的监听 ；在运行过程中，执行controller接受的相关请求的功能，完成本地状态和远程服务器同步
+
  * @author nkorange
  * @since 1.0.0
  */
@@ -48,6 +52,9 @@ public class ServerListManager {
 
     private List<ServerChangeListener> listeners = new ArrayList<>();
 
+    /**
+     * 服务列表集合
+     */
     private List<Server> servers = new ArrayList<>();
 
     /**
@@ -75,12 +82,21 @@ public class ServerListManager {
 
     @PostConstruct
     public void init() {
-         // 注册serverList的更新器，仍然是由GlobalExecutor来注册调度服务
+         // 注册serverList的更新器，仍然是由GlobalExecutor来注册调度服务 调度周期是5ms
         GlobalExecutor.registerServerListUpdater(new ServerListUpdater());
         // 代码执行的功能是注册server status的上报器 2秒
         GlobalExecutor.registerServerStatusReporter(new ServerStatusReporter(), 2000);
     }
 
+    /**
+     * 获取配置文件方式
+     *
+     * 1. 启动模式
+     * 2. 配置文件
+     * 3. 环境变量(启动参数)
+     *
+     * @return
+     */
     private List<Server> refreshServerList() {
 
         List<Server> result = new ArrayList<>();
@@ -303,9 +319,7 @@ public class ServerListManager {
                 boolean changed = false;
 
                 /**
-                 * 1， 获取新的serverList与old servers的差集，也即获得新加入的new servers，如果不为空，则加入到servers并置位changed = true。
-                 *
-                 * 2，获取old servers 与 新的serverList的差集，也即获得已经删掉的或者死去的server，并并从servers中删除并置位changed = true
+                 * 1， 获取新的serverList与old servers的差集，也即获得新加入的new servers，如果不为空，则加入到servers并置位changed = true
                  */
                 List<Server> newServers = (List<Server>) CollectionUtils.subtract(refreshedServers, oldServers);
                 if (CollectionUtils.isNotEmpty(newServers)) {
@@ -313,7 +327,9 @@ public class ServerListManager {
                     changed = true;
                     Loggers.RAFT.info("server list is updated, new: {} servers: {}", newServers.size(), newServers);
                 }
-
+                /**
+                 * 2，获取old servers 与 新的serverList的差集，也即获得已经删掉的或者死去的server，并并从servers中删除并置位changed = true
+                 */
                 List<Server> deadServers = (List<Server>) CollectionUtils.subtract(oldServers, refreshedServers);
                 if (CollectionUtils.isNotEmpty(deadServers)) {
                     servers.removeAll(deadServers);

@@ -273,7 +273,7 @@ public class InstanceController {
     public JSONObject beat(HttpServletRequest request) throws Exception {
 
         JSONObject result = new JSONObject();
-        // 从json响应中取出clientBeatInterval字段值更新BeatReactor的clientBeatInterval属性值
+        // clientBeatInterval字段值 为 BeatReactor的clientBeatInterval属性值 心跳间隔
         result.put("clientBeatInterval", switchDomain.getClientBeatInterval());
         String serviceName = WebUtils.required(request, CommonParams.SERVICE_NAME);
         String namespaceId = WebUtils.optional(request, CommonParams.NAMESPACE_ID,
@@ -306,8 +306,9 @@ public class InstanceController {
         }
         // 获得对应 具体 instance信息
         Instance instance = serviceManager.getInstance(namespaceId, serviceName, clusterName, ip, port);
-
+        // 实例不存在
         if (instance == null) {
+            // 心跳不存在
             if (clientBeat == null) {
                 result.put(CommonParams.CODE, NamingResponseCode.RESOURCE_NOT_FOUND);
                 return result;

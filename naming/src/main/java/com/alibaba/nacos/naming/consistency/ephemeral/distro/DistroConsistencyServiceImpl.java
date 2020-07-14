@@ -125,7 +125,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             Thread.sleep(1000L);
             Loggers.DISTRO.info("waiting server list init...");
         }
-
+        // 遍历其他节点
         for (Server server : serverListManager.getHealthyServers()) {
             if (NetUtils.localServer().equals(server.getKey())) {
                 continue;
@@ -134,6 +134,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
                 Loggers.DISTRO.debug("sync from " + server);
             }
             // try sync data from remote server:
+            // 尝试同步远程节点
             if (syncAllDataFromRemote(server)) {
                 initialized = true;
                 return;
@@ -166,7 +167,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
     }
 
     public void onPut(String key, Record value) {
-
+        // 如果是临时的服务实例集合
         if (KeyBuilder.matchEphemeralInstanceListKey(key)) {
             Datum<Instances> datum = new Datum<>();
             datum.value = (Instances) value;
@@ -174,7 +175,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
             datum.timestamp.incrementAndGet();
             dataStore.put(key, datum);
         }
-
+        // 没有监听器，返回
         if (!listeners.containsKey(key)) {
             return;
         }
@@ -261,6 +262,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
     public boolean syncAllDataFromRemote(Server server) {
 
         try {
+            // 获取到节点数据
             byte[] data = NamingProxy.getAllData(server.getKey());
             processData(data);
             return true;

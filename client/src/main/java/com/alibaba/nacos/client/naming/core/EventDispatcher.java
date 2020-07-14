@@ -38,11 +38,13 @@ public class EventDispatcher {
 
     /**
      * changedServices是个BlockingQueue阻塞队列，有改变的才会获取
+     *
+     * 变更的服务信息，共享内存，用于通知服务变更事件
      */
     private BlockingQueue<ServiceInfo> changedServices = new LinkedBlockingQueue<ServiceInfo>();
 
     /**
-     * 时间监听器
+     * service 对应的监听器
      */
     private ConcurrentMap<String, List<EventListener>> observerMap
         = new ConcurrentHashMap<String, List<EventListener>>();

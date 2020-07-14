@@ -108,6 +108,12 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         }
         checkTask = new HealthCheckTask(this);
 
+        // 进行健康状态检测
+        // 如果开启健康状态检测（默认 true），或者 HealthCheckWhiteList 有该服务，
+        // 根据任务里面的 checkType，从 healthCheckProcessorMap 获取检测 Processor
+        // 检测方式：http、tcp、mysql、none(直接返回)，默认是 TcpSuperSenseProcessor
+        // 将任务添加到 taskQueue（LinkedBlockingQueue）
+        // 只要任务没有取消，一直间隔执行,参考下面 finally 块
         HealthCheckReactor.scheduleCheck(checkTask);
         inited = true;
     }

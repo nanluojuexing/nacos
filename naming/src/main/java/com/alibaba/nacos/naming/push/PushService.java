@@ -147,6 +147,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
             public void run() {
                 try {
                     Loggers.PUSH.info(serviceName + " is changed, add it to push queue.");
+                    // 获取所有需要推送的client
                     ConcurrentMap<String, PushClient> clients = clientMap.get(UtilsAndCommons.assembleFullServiceName(namespaceId, serviceName));
                     if (MapUtils.isEmpty(clients)) {
                         return;
@@ -155,6 +156,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
                     Map<String, Object> cache = new HashMap<>(16);
                     long lastRefTime = System.nanoTime();
                     for (PushClient client : clients.values()) {
+                        // 超时 删除不要
                         if (client.zombie()) {
                             Loggers.PUSH.debug("client is zombie: " + client.toString());
                             clients.remove(client.toString());
@@ -186,7 +188,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
 
                         Loggers.PUSH.info("serviceName: {} changed, schedule push for: {}, agent: {}, key: {}",
                             client.getServiceName(), client.getAddrStr(), client.getAgent(), (ackEntry == null ? null : ackEntry.key));
-                        //
+                        // 发送
                         udpPush(ackEntry);
                     }
                 } catch (Exception e) {
@@ -198,7 +200,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
 
             }
         }, 1000, TimeUnit.MILLISECONDS);
-
+        // 放缓存，不会重复发送
         futureMap.put(UtilsAndCommons.assembleFullServiceName(namespaceId, serviceName), future);
 
     }
@@ -605,7 +607,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
             udpSocket.send(ackEntry.origin);
 
             ackEntry.increaseRetryTime();
-
+            //10秒没应答就再尝试一次
             executorService.schedule(new Retransmitter(ackEntry), TimeUnit.NANOSECONDS.toMillis(ACK_TIMEOUT_NANOS),
                 TimeUnit.MILLISECONDS);
 

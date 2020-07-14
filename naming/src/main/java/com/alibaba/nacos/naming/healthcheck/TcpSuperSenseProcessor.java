@@ -94,6 +94,10 @@ public class TcpSuperSenseProcessor implements HealthCheckProcessor, Runnable {
 
     private Selector selector;
 
+    // 创建 TcpSuperSenseProcessor（也是 runnable） 的时候，会把自己提交给 ScheduledExecutorService 执行
+    // run 方法中的 processTask() 方法消费并运行 taskQueue 里面的任务
+    // 执行结果交给 PostProcessor 接收（每个 NIO 的 SelectionKey 创建一个新的 PostProcessor）
+    // 结果由 Beat --> HealthCheckCommon 处理,判断并设置服务健康状态
     public TcpSuperSenseProcessor() {
         try {
             selector = Selector.open();

@@ -66,8 +66,14 @@ public class SwitchDomain implements Record, Cloneable {
 
     private List<String> incrementalList = new ArrayList<>();
 
+    /**
+     * 用于server 状态调度定时器，15ms
+     */
     private long serverStatusSynchronizationPeriodMillis = TimeUnit.SECONDS.toMillis(2);
 
+    /**
+     * 用于service状态调度定时器，5ms
+     */
     private long serviceStatusSynchronizationPeriodMillis = TimeUnit.SECONDS.toMillis(5);
 
     private boolean disableAddIP = false;
@@ -80,6 +86,8 @@ public class SwitchDomain implements Record, Cloneable {
 
     /**
      * The server is regarded as expired if its two reporting interval is lagger than this variable.
+     *
+     *  如果2次上报间隔大于改值，则说明认为该server是expired
      */
     private long distroServerExpiredMillis = TimeUnit.SECONDS.toMillis(10);
 
@@ -93,8 +101,14 @@ public class SwitchDomain implements Record, Cloneable {
 
     private boolean enableAuthentication = false;
 
+    /**
+     * 否有人工设置了改值，如果设置了改值，会优先与自动计算出的值
+     */
     private String overriddenServerStatus = null;
 
+    /**
+     * 默认的service都是临时节点，即根据上报情况动态增删
+     */
     private boolean defaultInstanceEphemeral = true;
 
     public boolean isEnableAuthentication() {
