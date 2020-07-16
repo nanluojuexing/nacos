@@ -141,7 +141,7 @@ public class EventDispatcher {
                     List<EventListener> listeners = observerMap.get(serviceInfo.getKey());
                     // 校验监听器是否为空
                     if (!CollectionUtils.isEmpty(listeners)) {
-                        // 循环遍历，发布时间通知
+                        // 循环遍历，发布时间通知 ，这里监听的是通过 subscribe 订阅的客户端
                         for (EventListener listener : listeners) {
                             List<Instance> hosts = Collections.unmodifiableList(serviceInfo.getHosts());
                             listener.onEvent(new NamingEvent(serviceInfo.getName(), serviceInfo.getGroupName(), serviceInfo.getClusters(), hosts));

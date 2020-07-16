@@ -95,6 +95,7 @@ public class DistroConsistencyServiceImpl implements EphemeralConsistencyService
 
     @PostConstruct
     public void init() {
+        // 加载节点
         GlobalExecutor.submit(loadDataTask);
         GlobalExecutor.submitDistroNotifyTask(notifier);
     }

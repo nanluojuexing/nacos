@@ -72,6 +72,12 @@ import org.springframework.util.CollectionUtils;
  * 在启动时会执行一次本地信息到其他服务器，while(true)发生改变的service队列内容进行本地更新
  * 同时启动对com.alibaba.nacos.naming.domains.meta.前缀的key的监听；在运行过程中，执行controller接受的相关请求的功能，完成本地状态和远程服务器同步
  *
+ * 当Service发生变更(增删改，通过事件驱动来解耦)，触发其onChange或onDelete事件(例如DistroConsistencyServiceImpl初始化时，如果是临时节点会触发)，
+ * 初始化时延时执行一次ServiceReporter任务来报告各服务的状态信息，一次UpdatedServiceProcessor任务
+ *
+ * 根据配置来决定是否开启清除空Service的EmptyServiceAutoClean任务(一个延时60s，周期20s执行)，该任务尽量不要频繁触发，以免由于心跳机制而导致服务缓存信息可能被删除然后再次创建Service实例
+ * 通过ServiceManage中大量的周期同步任务，来保证服务集群中对等节点的数据最终一致性
+ *
  * @author nkorange
  */
 @Component
@@ -129,16 +135,17 @@ public class ServiceManager implements RecordListener<Service> {
         // 方法首先遍历serviceMap(Map<namespace, Map<group::serviceName, Service>>),如果size >0 且 distroMapper.responsible(serviceName)为true继续向下执行
         // 通过getService(namespaceId, serviceName)获取到Service实例service
         // 如果service不为空，通过对该service下所有Instance实例组成的ip.getIp() + ":" + ip.getPort() + "_" + ip.getWeight() + "_"+ ip.isHealthy() + "_" + ip.getClusterName()执行md5来获得该service对应的checksum
-        // 再将service的checksum封装为Message实例msg,再将该消息同步到出自已以外的所有服务器。器质性同步的过程是通过async http post请求path /nacos/v1/ns/service/status来执行的，此处不关心执行结果，异步执行
+        // 再将service的checksum封装为Message实例msg,再将该消息同步到除自已以外的所有服务器
+        // 同步的过程是通过async http post请求path /nacos/v1/ns/service/status来执行的，此处不关心执行结果，异步执行
         UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR.schedule(new ServiceReporter(), 60000, TimeUnit.MILLISECONDS);
-        //启动一个新的UpdatedServiceProcessor线程并直接执行while (true)，简单粗暴
+        //启动一个新的 UpdatedServiceProcessor 线程并直接执行while (true)，简单粗暴
         // 该循环会一直尝试从LinkedBlockingDeque<ServiceKey>的toBeUpdatedServicesQueue实例来获取需要被更新的ServiceKey
         // 该ServiceKey是由namespaceId+serviceName+serverIP+checksum组成的，而toBeUpdatedServicesQueue就是由外部consumer、provider、console、openapi对实例进行变更时
         // 被该server收到，并offer进去的。获取到ServiceKey后继续向下执行，由GlobalExecutor启动一个新的ServiceUpdater线程，对本地执行线程状态更新updatedHealthStatus(namespaceId, serviceName, serverIP)
-        // 具体执行逻辑是通过ServiceStatusSynchronizer实例synchronizer的get方法
+        // 具体执行逻辑是通过 ServiceStatusSynchronizer 实例synchronizer的get方法
         // 通过NamingProxy.reqAPI方法对ServiceKey中包含的server发起http同步get调用
         // 调用的path是/nacos/v1/ns/instance/statuses,并获返回result的数据组装成Message实例msg。将get到的实例msg进行解析和对比更新到service
-        // 并准备通过PushService的serviceChanged(service)来将更新推送到连接到本服务器的client
+        // 并准备通过 PushService 的 serviceChanged(service) 来将更新推送到连接到本服务器的client
         // 具体过程是通过调用ApplicationContext实例applicationContext的publishEvent()方法，来将封装成的ServiceChangeEvent实例发送出去
         // 需要指出的是为了降低推送频率这里有一个futureMap.containsKey(UtilsAndCommons.assembleFullServiceName(service.getNamespaceId(), service.getName()))的判断，只有为false时才发送事件
         UtilsAndCommons.SERVICE_UPDATE_EXECUTOR.submit(new UpdatedServiceProcessor());
@@ -169,6 +176,13 @@ public class ServiceManager implements RecordListener<Service> {
         return serviceMap.get(namespaceId);
     }
 
+    /**
+     * 增加到更新队列
+     * @param namespaceId
+     * @param serviceName
+     * @param serverIP
+     * @param checksum
+     */
     public void addUpdatedService2Queue(String namespaceId, String serviceName, String serverIP, String checksum) {
         lock.lock();
         try {
@@ -250,6 +264,7 @@ public class ServiceManager implements RecordListener<Service> {
             try {
                 while (true) {
                     try {
+                        // 获取要更新的 serviceKey
                         serviceKey = toBeUpdatedServicesQueue.take();
                     } catch (Exception e) {
                         Loggers.EVT_LOG.error("[UPDATE-DOMAIN] Exception while taking item from LinkedBlockingDeque.");
@@ -266,6 +281,9 @@ public class ServiceManager implements RecordListener<Service> {
         }
     }
 
+    /**
+     *
+     */
     private class ServiceUpdater implements Runnable {
 
         String namespaceId;
@@ -914,12 +932,18 @@ public class ServiceManager implements RecordListener<Service> {
         }
     }
 
+    /**
+     * 遍历allServiceNames，取出distroMapper.responsible的serviceName，
+     * 重新计算recalculateChecksum，然后添加到ServiceChecksum中，构造Message，
+     * 遍历sameSiteServers使用 ServiceStatusSynchronizer.send发送该消息；
+     * 最后往 UtilsAndCommons.SERVICE_SYNCHRONIZATION_EXECUTOR 重新注册ServiceReporter
+     */
     private class ServiceReporter implements Runnable {
 
         @Override
         public void run() {
             try {
-                // 获得多有的服务
+                // 获得所有的服务
                 Map<String, Set<String>> allServiceNames = getAllServiceNames();
                 // 如果没有服务，忽略
                 if (allServiceNames.size() <= 0) {

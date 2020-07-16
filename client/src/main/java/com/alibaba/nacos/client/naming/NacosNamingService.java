@@ -104,7 +104,7 @@ public class NacosNamingService implements NamingService {
         // 域名解析规则：在endpoint端配置网段和环境的映射关系，
         // endpoint在接收到客户端的请求之后，根据客户端的来源IP所属网段，计算出该客户端所属环境，
         // 然后找到对应环境的IP列表返回给客户端，如上图二
-        // 可以使用 nginx 的geo 模块实现简单的地址服务器
+        // 可以使用 nginx 的 geo 模块实现简单的地址服务器
         initServerAddr(properties);
         InitUtils.initWebRootContext();
         // 初始化缓存文件夹 默认为 {user.home} + "/nacos/naming/" + namespace;

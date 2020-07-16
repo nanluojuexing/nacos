@@ -47,6 +47,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPOutputStream;
 
 /**
+ * 用于向各订阅的客户端(管理所有注册过的PushClient信息)通过udp通信协议发送Service变更信息，内部包含多个ScheduledExecutorService执行器：
+ * 名为com.alibaba.nacos.naming.push.retransmitter 处理两种任务：并开启周期为20s，延时事件为0s的定期清除无效pushClient任务；
+ * 名为com.alibaba.nacos.naming.push.udpSender：udp通信协议发送Service变更信息。
+ * 名为com.alibaba.nacos.naming.push.receiver线程类Receiver用于接受接受client的ACK结果。
+ * 通过监听ServiceChangeEvent事件触发onApplicationEvent函数最终通过udpSender异步进行状态同步。该类与Client中的PushReceiver相对应.
  * @author nacos
  */
 @Component
@@ -133,6 +138,10 @@ public class PushService implements ApplicationContextAware, ApplicationListener
     }
 
     /**
+     * Step 1:通过ServiceChangeEvent事件触发我们的推送，这里要注意的是因为我们的节点都是通过distro进行更新，当我们distroT同步到其他机器上时，同样也会触发这个事件。
+     * Step 2:获取本机上维护的订阅者，因为订阅者是根据是否查询过服务节点来定义的，查询过服务节点这个动作会被随机的打到不同的 Nacos-Server 上，所以我们每个节点都会维护一部分订阅者，并且维护的订阅者之间还会有重复，由于后续是UDP发送，重复维护订阅者的成本不是很高。
+     * Step3：生成ackEntry，也就是我们发送的内容并且将其缓存起来，这里缓存主要是防止重复做压缩的过程。
+     * Step4: 最后进行udp的发送
      * 监听服务变更
      * @param event
      */
@@ -213,6 +222,17 @@ public class PushService implements ApplicationContextAware, ApplicationListener
         PushService.totalPush = totalPush;
     }
 
+    /**
+     * 添加于客户端保持通信的service连接对象
+     * @param namespaceId
+     * @param serviceName
+     * @param clusters
+     * @param agent
+     * @param socketAddr
+     * @param dataSource
+     * @param tenant
+     * @param app
+     */
     public void addClient(String namespaceId,
                           String serviceName,
                           String clusters,
@@ -242,7 +262,7 @@ public class PushService implements ApplicationContextAware, ApplicationListener
             clientMap.putIfAbsent(serviceKey, new ConcurrentHashMap<String, PushClient>(1024));
             clients = clientMap.get(serviceKey);
         }
-
+        // 缓存信息
         PushClient oldClient = clients.get(client.toString());
         if (oldClient != null) {
             oldClient.refresh();

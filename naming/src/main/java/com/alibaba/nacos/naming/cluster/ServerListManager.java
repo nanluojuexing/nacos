@@ -302,6 +302,12 @@ public class ServerListManager {
         }
     }
 
+    /**
+     * ServerListUpdater实现了Runnable接口，其run方法会通过refreshServerList方法从配置文件读取最新的servers配置，
+     * 然后对比oldServers，看哪些是新增，哪些是删除的
+     * 如果确实有变更则通过notifyListeners方法进行通知回调ServerChangeListener的onChangeServerList、onChangeHealthyServerList方法
+     *。
+     */
     public class ServerListUpdater implements Runnable {
 
         @Override
@@ -348,6 +354,12 @@ public class ServerListManager {
     }
 
 
+    /**
+     * 首先执行checkDistroHeartbeat，
+     * 然后执行onReceiveServerStatus，
+     * 最后获取servers列表通知通过 ServerStatusSynchronizer.send(server.getKey(), msg)方法通知其他server自己的状态；
+     * 最后再次通过registerServerStatusReporter调度下次执行的时间
+     */
     private class ServerStatusReporter implements Runnable {
 
         @Override
@@ -403,6 +415,12 @@ public class ServerListManager {
         }
     }
 
+    /**
+     * checkDistroHeartbeat方法会遍历servers从distroBeats获取lastBeat信息，
+     * 然后判断距离lastBeat的时间是否小于distroServerExpiredMillis，小于则alive为true，否则alive为false；之后遍历servers更新adWeight
+     * 然后计算curRatio，如果大于distroThreshold且autoDisabledHealthCheck为true且距离lastHealthServerMillis大于STABLE_PERIOD则会执行switchDomain.setHealthCheckEnabled(true)并更新autoDisabledHealthCheck为false
+     * 最后判断healthyServers与newHealthyList是否一致，不一致且switchDomain.isHealthCheckEnabled()则会执行switchDomain.setHealthCheckEnabled(false)且设置autoDisabledHealthCheck为true，更新lastHealthServerMillis；最后更新healthyServers，执行notifyListeners方法
+     */
     private void checkDistroHeartbeat() {
 
         Loggers.SRV_LOG.debug("check distro heartbeat.");

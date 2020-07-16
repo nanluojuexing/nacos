@@ -42,6 +42,9 @@ import java.util.Enumeration;
 import java.util.List;
 
 /**
+ * Distro中并不是每个节点都可以处理所有的读请求，但是写请求并不是每个节点都可以处理的，每个节点会根据key的hash值来判断是否应该是自己处理
+ * 写请求访问的是域名这个是会随机打到每个节点上的，Nacos是怎么做到让这些写请求打到对应的机器上呢;
+ * DistroFilter 会对每个请求做一些过滤，如果发现这个请求不是自己的，那么就会转发这个请求到对应的服务器进行处理，收到结果之后再返回给用户
  * @author nacos
  */
 public class DistroFilter implements Filter {

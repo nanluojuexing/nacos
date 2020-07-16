@@ -61,7 +61,7 @@ public class DistroController {
     private SwitchDomain switchDomain;
 
     /**
-     * 接受同步的数据
+     * 接受其他节点同步的数据
      * @param dataMap
      * @return
      * @throws Exception

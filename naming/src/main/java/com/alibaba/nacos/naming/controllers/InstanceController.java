@@ -447,9 +447,10 @@ public class InstanceController {
                                 int udpPort,
                                 String env, boolean isCheck, String app, String tid, boolean healthyOnly)
         throws Exception {
-
+        // 创建客户端信息
         ClientInfo clientInfo = new ClientInfo(agent);
         JSONObject result = new JSONObject();
+        // 获取服务
         Service service = serviceManager.getService(namespaceId, serviceName);
 
         if (service == null) {
@@ -461,12 +462,13 @@ public class InstanceController {
             result.put("hosts", new JSONArray());
             return result;
         }
-
+        // 检测服务是否可用
         checkIfDisabled(service);
 
         long cacheMillis = switchDomain.getDefaultCacheMillis();
 
         // now try to enable the push
+        //有UDP端口的话且里面判断客户端agent类型，好几种语言版本JAVA PYTHON GO
         try {
             if (udpPort > 0 && pushService.canEnablePush(agent)) {
 
@@ -485,7 +487,7 @@ public class InstanceController {
         }
 
         List<Instance> srvedIPs;
-
+        // 获取集群相关的服务实例
         srvedIPs = service.srvIPs(Arrays.asList(StringUtils.split(clusters, ",")));
 
         // filter ips using selector:
@@ -522,6 +524,7 @@ public class InstanceController {
         ipMap.put(Boolean.TRUE, new ArrayList<>());
         ipMap.put(Boolean.FALSE, new ArrayList<>());
 
+        //区分健康状况的实例
         for (Instance ip : srvedIPs) {
             ipMap.get(ip.isHealthy()).add(ip);
         }
@@ -532,6 +535,7 @@ public class InstanceController {
 
         double threshold = service.getProtectThreshold();
 
+        //健康的小于阈值的话就会开启保护模式，会把不健康的也实例也下发
         if ((float) ipMap.get(Boolean.TRUE).size() / srvedIPs.size() <= threshold) {
 
             Loggers.SRV_LOG.warn("protect threshold reached, return all ips, service: {}", serviceName);

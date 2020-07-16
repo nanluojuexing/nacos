@@ -23,7 +23,7 @@ import com.alibaba.nacos.api.exception.NacosException;
 /**
  * Naming Factory
  *
- * 命名工厂
+ * 工厂类，根据不同方式创建 NacosNamingService
  *
  * @author nkorange
  */

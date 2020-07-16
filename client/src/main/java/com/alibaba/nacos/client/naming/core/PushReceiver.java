@@ -73,7 +73,7 @@ public class PushReceiver implements Runnable {
                 // byte[] is initialized with 0 full filled by default
                 byte[] buffer = new byte[UDP_MSS];
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-
+                // 接受服务端的 udp 请求
                 udpSocket.receive(packet);
 
                 String json = new String(IoUtils.tryDecompress(packet.getData()), "UTF-8").trim();
@@ -103,7 +103,7 @@ public class PushReceiver implements Runnable {
                         + ", \"lastRefTime\":\"" + pushPacket.lastRefTime
                         + "\", \"data\":" + "\"\"}";
                 }
-
+                // 返回给服务端
                 udpSocket.send(new DatagramPacket(ack.getBytes(Charset.forName("UTF-8")),
                     ack.getBytes(Charset.forName("UTF-8")).length, packet.getSocketAddress()));
             } catch (Exception e) {

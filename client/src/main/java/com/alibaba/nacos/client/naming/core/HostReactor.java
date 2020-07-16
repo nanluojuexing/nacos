@@ -40,8 +40,13 @@ public class HostReactor {
 
     private static final long UPDATE_HOLD_INTERVAL = 5000L;
 
+    /**
+     * 延迟执行任务
+     */
     private final Map<String, ScheduledFuture<?>> futureMap = new HashMap<String, ScheduledFuture<?>>();
-
+    /**
+     * 缓存服务实例信息，在 HostReactor 初始化的时候选在是否加载缓存
+     */
     private Map<String, ServiceInfo> serviceInfoMap;
 
     private Map<String, Object> updatingMap;
@@ -64,7 +69,7 @@ public class HostReactor {
 
     public HostReactor(EventDispatcher eventDispatcher, NamingProxy serverProxy, String cacheDir,
                        boolean loadCacheAtStart, int pollingThreadCount) {
-        // 定时任务线程，
+        // 定时线程调度器
         executor = new ScheduledThreadPoolExecutor(pollingThreadCount, new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -117,9 +122,9 @@ public class HostReactor {
             //empty or error push, just ignore
             return oldService;
         }
-
+        // 标记服务是否有更新
         boolean changed = false;
-
+        // 心就service 对比，刷新缓存，标记变更状态
         if (oldService != null) {
             // 对比刷新时间
             if (oldService.getLastRefTime() > serviceInfo.getLastRefTime()) {
@@ -191,7 +196,7 @@ public class HostReactor {
             }
 
             serviceInfo.setJsonFromServer(json);
-
+            // 发布服务变更事件
             if (newHosts.size() > 0 || remvHosts.size() > 0 || modHosts.size() > 0) {
                 eventDispatcher.serviceChanged(serviceInfo);
                 DiskCache.write(serviceInfo, cacheDir);
@@ -233,7 +238,7 @@ public class HostReactor {
     }
 
     /**
-     *
+     * 获取服务详情，会启动一个任务，定时更新 scheduleUpdateIfAbsent
      * @param serviceName
      * @param clusters
      * @return
@@ -245,20 +250,21 @@ public class HostReactor {
         if (failoverReactor.isFailoverSwitch()) {
             return failoverReactor.getService(key);
         }
-
+        // 获取不到对厅的服务信息
         ServiceInfo serviceObj = getServiceInfo0(serviceName, clusters);
 
         if (null == serviceObj) {
             serviceObj = new ServiceInfo(serviceName, clusters);
 
             serviceInfoMap.put(serviceObj.getKey(), serviceObj);
-
+            // 添加到待更新的服务
             updatingMap.put(serviceName, new Object());
             updateServiceNow(serviceName, clusters);
+            //更新完成移除
             updatingMap.remove(serviceName);
 
         } else if (updatingMap.containsKey(serviceName)) {
-
+            // 如果再待更新列表中，需要等待，避免产生垃圾数据
             if (UPDATE_HOLD_INTERVAL > 0) {
                 // hold a moment waiting for update finish
                 synchronized (serviceObj) {
@@ -296,7 +302,7 @@ public class HostReactor {
     public void updateServiceNow(String serviceName, String clusters) {
         ServiceInfo oldService = getServiceInfo0(serviceName, clusters);
         try {
-
+            // 查询服务信息，随意一个cluster中的节点获取数据，获取成功就结束
             String result = serverProxy.queryList(serviceName, clusters, pushReceiver.getUDPPort(), false);
 
             if (StringUtils.isNotEmpty(result)) {
@@ -349,14 +355,14 @@ public class HostReactor {
                     updateServiceNow(serviceName, clusters);
                     serviceObj = serviceInfoMap.get(ServiceInfo.getKey(serviceName, clusters));
                 } else {
-                    // 已经更新的过的，直接push
-                    // if serviceName already updated by push, we should not override it
-                    // since the push data may be different from pull through force push
+                    // 如果serviceName已通过push更新，则我们不应覆盖它，因为push数据可能与强制通过push的数据不同
+                    // if serviceName already updated by push, we should not override it since the push data may be different from pull through force push
                     refreshOnly(serviceName, clusters);
                 }
 
                 lastRefTime = serviceObj.getLastRefTime();
 
+                // 判断是否监听变更
                 if (!eventDispatcher.isSubscribed(serviceName, clusters) &&
                     !futureMap.containsKey(ServiceInfo.getKey(serviceName, clusters))) {
                     // abort the update task:
