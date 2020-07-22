@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static com.alibaba.nacos.core.utils.SystemUtils.STANDALONE_MODE;
 
 /**
+ * 当前节点持有的同伴节点信息
  * @author nacos
  */
 @Component
@@ -59,10 +60,16 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
     private RaftPeer leader = null;
 
+    /**
+     * 节点信息缓存类 节点ip：节点信息类 key : value
+     */
     private Map<String, RaftPeer> peers = new HashMap<>();
 
     private Set<String> sites = new HashSet<>();
 
+    /**
+     * 本地是否被激活的标志
+     */
     private boolean ready = false;
 
     public RaftPeerSet() {
@@ -77,6 +84,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
 
     @PostConstruct
     public void init() {
+        // 注册自己
         serverListManager.listen(this);
     }
 
@@ -141,27 +149,34 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
     }
 
     public RaftPeer decideLeader(RaftPeer candidate) {
+        // 结果放入 RaftPeer
         peers.put(candidate.ip, candidate);
 
         SortedBag ips = new TreeBag();
         int maxApproveCount = 0;
         String maxApprovePeer = null;
+        // 遍历
         for (RaftPeer peer : peers.values()) {
+            //如果没有投票，直接跳过
             if (StringUtils.isEmpty(peer.voteFor)) {
                 continue;
             }
-
+            // 有投票过的
             ips.add(peer.voteFor);
+            //超过最多选票数的就更新
             if (ips.getCount(peer.voteFor) > maxApproveCount) {
                 maxApproveCount = ips.getCount(peer.voteFor);
+                // 最多的候选者
                 maxApprovePeer = peer.voteFor;
             }
         }
-
+        // 超过半数
         if (maxApproveCount >= majorityCount()) {
+            // 获取票数最多的候选者
             RaftPeer peer = peers.get(maxApprovePeer);
+            // 选为leader
             peer.state = RaftPeer.State.LEADER;
-
+            // 如果 leader 有改变的话就通知
             if (!Objects.equals(leader, peer)) {
                 leader = peer;
                 applicationContext.publishEvent(new LeaderElectFinishedEvent(this, leader));
@@ -260,17 +275,19 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
     public void onChangeServerList(List<Server> latestMembers) {
 
         Map<String, RaftPeer> tmpPeers = new HashMap<>(8);
+        // 遍历最新的server集合
         for (Server member : latestMembers) {
-
+            // 判断 是否存在缓存中，不存在的添加
             if (peers.containsKey(member.getKey())) {
                 tmpPeers.put(member.getKey(), peers.get(member.getKey()));
                 continue;
             }
-
+            // build投票信息
             RaftPeer raftPeer = new RaftPeer();
             raftPeer.ip = member.getKey();
 
             // first time meet the local server:
+            // 如果为本地的 设置本地的任期
             if (NetUtils.localServer().equals(member.getKey())) {
                 raftPeer.term.set(localTerm.get());
             }
@@ -279,6 +296,7 @@ public class RaftPeerSet implements ServerChangeListener, ApplicationContextAwar
         }
 
         // replace raft peer set:
+        //
         peers = tmpPeers;
 
         if (RunningConfig.getServerPort() > 0) {

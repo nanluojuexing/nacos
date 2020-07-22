@@ -23,6 +23,9 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
+ *
+ * naming的核心开关配置类
+ *
  * @author nacos
  */
 @Component

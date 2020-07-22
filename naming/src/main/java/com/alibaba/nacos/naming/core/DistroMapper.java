@@ -53,6 +53,7 @@ public class DistroMapper implements ServerChangeListener {
      */
     @PostConstruct
     public void init() {
+        // 注册自己
         serverListManager.listen(this);
     }
 

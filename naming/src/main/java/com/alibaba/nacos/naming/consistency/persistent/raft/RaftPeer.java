@@ -23,18 +23,31 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
+ * 单个raft节点的对象，其成员变量描述了单个节点的信息
  * @author nacos
  */
 public class RaftPeer {
 
     public String ip;
 
+    /**
+     * 选票的节点信息
+     */
     public String voteFor;
 
+    /**
+     * 任期
+     */
     public AtomicLong term = new AtomicLong(0L);
 
+    /**
+     * leader的间隔时间
+     */
     public volatile long leaderDueMs = RandomUtils.nextLong(0, GlobalExecutor.LEADER_TIMEOUT_MS);
 
+    /**
+     * 心跳时间
+     */
     public volatile long heartbeatDueMs = RandomUtils.nextLong(0, GlobalExecutor.HEARTBEAT_INTERVAL_MS);
 
     public State state = State.FOLLOWER;
