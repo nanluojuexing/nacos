@@ -61,8 +61,9 @@ public class NacosConfigService implements ConfigService {
      * http agent
      */
     private HttpAgent agent;
+
     /**
-     * longpolling
+     * longpolling 长轮询
      */
     private ClientWorker worker;
     private String namespace;
@@ -77,8 +78,10 @@ public class NacosConfigService implements ConfigService {
             encode = encodeTmp.trim();
         }
         initNamespace(properties);
+        // 封装了MetricsHttpAgent，能够实现数据信息上报到metrics
         agent = new MetricsHttpAgent(new ServerHttpAgent(properties));
         agent.start();
+        // 初始化客户端工具类
         worker = new ClientWorker(agent, configFilterChainManager, properties);
     }
 

@@ -317,7 +317,7 @@ public class ClientWorker {
     public void checkConfigInfo() {
         // 分任务
         int listenerSize = cacheMap.get().size();
-        // 向上取整为批数
+        // Round up the longingTaskCount.向上取整，保证所有的配置都会检查到 ParamUtil.getPerTaskConfigSize()默认为3000，
         int longingTaskCount = (int) Math.ceil(listenerSize / ParamUtil.getPerTaskConfigSize());
         if (longingTaskCount > currentLongingTaskCount) {
             for (int i = (int) currentLongingTaskCount; i < longingTaskCount; i++) {
@@ -456,7 +456,7 @@ public class ClientWorker {
                 return t;
             }
         });
-
+        // 用于长轮训的线程池
         executorService = Executors.newScheduledThreadPool(Runtime.getRuntime().availableProcessors(), new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
@@ -466,7 +466,7 @@ public class ClientWorker {
                 return t;
             }
         });
-
+        // 延迟10ms 执行检查配置的任务
         executor.scheduleWithFixedDelay(new Runnable() {
             @Override
             public void run() {
@@ -489,7 +489,13 @@ public class ClientWorker {
         enableRemoteSyncConfig = Boolean.parseBoolean(properties.getProperty(PropertyKeyConst.ENABLE_REMOTE_SYNC_CONFIG));
     }
 
+    /**
+     * 长轮训线程
+     */
     class LongPollingRunnable implements Runnable {
+        /**
+         *
+         */
         private int taskId;
 
         public LongPollingRunnable(int taskId) {
@@ -504,6 +510,7 @@ public class ClientWorker {
             try {
                 // check failover config
                 for (CacheData cacheData : cacheMap.get().values()) {
+                    // 只处理自己的分片
                     if (cacheData.getTaskId() == taskId) {
                         cacheDatas.add(cacheData);
                         try {
@@ -517,7 +524,7 @@ public class ClientWorker {
                     }
                 }
 
-                // check server config
+                // check server config  检查配置服务端是否发生变化
                 List<String> changedGroupKeys = checkUpdateDataIds(cacheDatas, inInitializingCacheList);
                 LOGGER.info("get changedGroupKeys:" + changedGroupKeys);
 
@@ -530,6 +537,7 @@ public class ClientWorker {
                         tenant = key[2];
                     }
                     try {
+                        // 远程获取最新的配置
                         String[] ct = getServerConfig(dataId, group, tenant, 3000L);
                         CacheData cache = cacheMap.get().get(GroupKey.getKeyTenant(dataId, group, tenant));
                         cache.setContent(ct[0]);
@@ -554,7 +562,7 @@ public class ClientWorker {
                     }
                 }
                 inInitializingCacheList.clear();
-
+                // 继续执行该任务
                 executorService.execute(this);
 
             } catch (Throwable e) {
